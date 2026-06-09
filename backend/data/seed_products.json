@@ -1,0 +1,148 @@
+[
+  {
+    "product_id": "icici-pru-i-protect-smart",
+    "name": "ICICI Pru iProtect Smart",
+    "category": "Term Insurance",
+    "description": "A comprehensive term insurance plan offering life cover, terminal illness coverage, and optional riders for critical illness and accidental death.",
+    "min_age": 18,
+    "max_age": 65,
+    "policy_term_min": 5,
+    "policy_term_max": 81,
+    "key_benefits": [
+      "Life cover up to 99 years of age",
+      "Waiver of premium on disability",
+      "Terminal illness coverage",
+      "Tax benefits under Section 80C and 10(10D)"
+    ],
+    "goals_supported": [
+      "Protection",
+      "Family Security",
+      "Debt Repayment"
+    ]
+  },
+  {
+    "product_id": "icici-pru-signature",
+    "name": "ICICI Pru Signature",
+    "category": "ULIP",
+    "description": "A Unit Linked Insurance Plan that provides life cover and helps in wealth creation through investments in equity and debt funds without any premium allocation or policy administration charges.",
+    "min_age": 0,
+    "max_age": 60,
+    "policy_term_min": 10,
+    "policy_term_max": 30,
+    "key_benefits": [
+      "Return of mortality charges at maturity",
+      "Systematic withdrawal plan",
+      "Wealth boosters at specific intervals",
+      "Choice of 4 portfolio strategies"
+    ],
+    "goals_supported": [
+      "Wealth Creation",
+      "Retirement Planning",
+      "Child Education"
+    ]
+  },
+  {
+    "product_id": "icici-pru-guaranteed-wealth-protector",
+    "name": "ICICI Pru Guaranteed Wealth Protector",
+    "category": "Endowment",
+    "description": "A traditional life insurance plan that offers guaranteed maturity benefits along with life cover, ensuring your savings are protected from market volatility.",
+    "min_age": 8,
+    "max_age": 60,
+    "policy_term_min": 10,
+    "policy_term_max": 15,
+    "key_benefits": [
+      "Capital guarantee",
+      "Guaranteed additions",
+      "Life cover equal to 10 times the annual premium",
+      "Loyalty additions"
+    ],
+    "goals_supported": [
+      "Capital Protection",
+      "Guaranteed Returns",
+      "Goal Accomplishment"
+    ]
+  },
+  {
+    "product_id": "icici-pru-easy-retirement",
+    "name": "ICICI Pru Easy Retirement",
+    "category": "Retirement",
+    "description": "A unit-linked pension plan that helps you build a retirement corpus by investing in equity and debt, with a capital guarantee feature to protect against market downturns.",
+    "min_age": 35,
+    "max_age": 70,
+    "policy_term_min": 10,
+    "policy_term_max": 30,
+    "key_benefits": [
+      "Assured benefit on maturity or death",
+      "Pension boosters added every 5 years",
+      "Flexibility to choose investment funds",
+      "Tax benefits on premiums paid"
+    ],
+    "goals_supported": [
+      "Retirement Planning",
+      "Regular Income"
+    ]
+  },
+  {
+    "product_id": "icici-pru-smart-kid",
+    "name": "ICICI Pru Smart Kid",
+    "category": "Child Plan",
+    "description": "A child education plan designed to secure your childs future even in your absence, offering a lump sum payout on death and funding future premiums.",
+    "min_age": 20,
+    "max_age": 54,
+    "policy_term_min": 10,
+    "policy_term_max": 25,
+    "key_benefits": [
+      "Waiver of premium benefit on death or disability",
+      "Lump sum death benefit payout",
+      "Milestone-based withdrawals",
+      "Wealth boosters"
+    ],
+    "goals_supported": [
+      "Child Education",
+      "Child Marriage",
+      "Financial Protection"
+    ]
+  },
+  {
+    "product_id": "icici-pru-gold",
+    "name": "ICICI Pru Gold",
+    "category": "Guaranteed Income",
+    "description": "A participating savings plan designed to provide a lifelong guaranteed regular income starting right from the end of the premium payment term.",
+    "min_age": 0,
+    "max_age": 60,
+    "policy_term_min": 7,
+    "policy_term_max": 12,
+    "key_benefits": [
+      "Guaranteed lifelong income",
+      "Cash bonus options (Immediate, Deferred, Accumulated)",
+      "Life cover for the entire policy term",
+      "Premium offset option"
+    ],
+    "goals_supported": [
+      "Regular Income",
+      "Legacy Planning",
+      "Retirement Supplement"
+    ]
+  },
+  {
+    "product_id": "icici-pru-heart-cancer-protect",
+    "name": "ICICI Pru Heart / Cancer Protect",
+    "category": "Health Insurance",
+    "description": "A specialized health insurance plan that provides a lump sum payout on the diagnosis of minor or major conditions of Heart Disease or Cancer.",
+    "min_age": 18,
+    "max_age": 65,
+    "policy_term_min": 5,
+    "policy_term_max": 40,
+    "key_benefits": [
+      "Lump sum payout on diagnosis irrespective of actual medical costs",
+      "Waiver of premium on diagnosis of minor condition",
+      "Income benefit option",
+      "Hospital benefit covering daily expenses"
+    ],
+    "goals_supported": [
+      "Health Security",
+      "Critical Illness Protection",
+      "Financial Buffer"
+    ]
+  }
+]
