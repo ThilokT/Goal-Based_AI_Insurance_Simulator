@@ -86,6 +86,12 @@ phase1_execution_guide.md
 project_execution_plan.html
 project_execution_plan.md
 project_execution_plan.pdf
-supabase_setup_guide.
+supabase_setup_guide.pdf
 aiml_engineer_visual.html
 aiml_flowchart.html
+
+node_modules/
+dist/
+.env
+.env.local
+*.log
