@@ -1,0 +1,77 @@
+"""
+Users router — profile CRUD endpoints.
+"""
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from app.schemas.users import UserProfileResponse, UpdateProfileRequest
+from app.middleware.auth import get_current_user
+from app.middleware.rate_limiter import limiter, CRUD_RATE_LIMIT
+from app.database import get_admin_client
+
+router = APIRouter(prefix="/users", tags=["Users"])
+
+
+@router.get(
+    "/me",
+    response_model=UserProfileResponse,
+    summary="Get current user profile",
+    description="Returns the authenticated user's profile data.",
+)
+@limiter.limit(CRUD_RATE_LIMIT)
+async def get_my_profile(request: Request, user: dict = Depends(get_current_user)):
+    """Fetch the authenticated user's profile."""
+    client = get_admin_client()
+
+    response = (
+        client.table("profiles")
+        .select("*")
+        .eq("id", user["user_id"])
+        .single()
+        .execute()
+    )
+
+    if not response.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile not found",
+        )
+
+    return UserProfileResponse(id=user["user_id"], **response.data)
+
+
+@router.put(
+    "/me",
+    response_model=UserProfileResponse,
+    summary="Update current user profile",
+    description="Update profile fields (age, income, risk appetite, etc.).",
+)
+@limiter.limit(CRUD_RATE_LIMIT)
+async def update_my_profile(
+    request: Request,
+    body: UpdateProfileRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update the authenticated user's profile."""
+    client = get_admin_client()
+
+    # Only update fields that were explicitly provided
+    update_data = body.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields to update",
+        )
+
+    response = (
+        client.table("profiles")
+        .update(update_data)
+        .eq("id", user["user_id"])
+        .execute()
+    )
+
+    if not response.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile not found",
+        )
+
+    return UserProfileResponse(id=user["user_id"], **response.data[0])
