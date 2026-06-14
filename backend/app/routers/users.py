@@ -73,11 +73,10 @@ async def update_my_profile(
     except Exception as e:
         import logging
         import traceback
-        from fastapi.responses import JSONResponse
         logging.getLogger("lifemap").error(f"Error updating profile: {e}")
         with open("error_log.txt", "w") as f:
             f.write(str(e) + "\n" + traceback.format_exc())
-        return JSONResponse(status_code=500, content={"detail": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
 
     if not response.data:
         raise HTTPException(
