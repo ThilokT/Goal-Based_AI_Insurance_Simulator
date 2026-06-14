@@ -138,7 +138,7 @@ class ChatService:
         self._last_gemini_failure: float = 0
         self._fallback_cooldown = 60  # seconds before retrying Gemini
 
-        console.print(f"[green]✅ ChatService initialized (model: {CHAT_MODEL})[/green]")
+        console.print(f"[green]ChatService initialized (model: {CHAT_MODEL})[/green]")
 
     def _get_groq_client(self):
         """Lazy-initialize the Groq client for fallback."""
@@ -199,7 +199,7 @@ class ChatService:
 
     # ── Gemini Chat ───────────────────────────────────────
 
-    def _send_gemini(self, user_id: str, message: str) -> str:
+    def _send_gemini(self, user_id: str, message: str, user_profile: dict = None) -> str:
         """Send message via Gemini and return the response text."""
         history = self.get_history(user_id)
 
@@ -209,13 +209,38 @@ class ChatService:
             role = "user" if msg["role"] == "user" else "model"
             gemini_history.append({"role": role, "parts": [msg["content"]]})
 
+        if user_profile:
+            profile_context = f"The user's current profile is: {json.dumps(user_profile)}. Use this to tailor your responses and do not ask them for this information again."
+            gemini_history.insert(0, {"role": "user", "parts": [profile_context]})
+            gemini_history.insert(1, {"role": "model", "parts": ["Understood. I will use this profile context for our conversation."]})
+
         chat = self._gemini_model.start_chat(history=gemini_history)
         response = chat.send_message(message)
         return response.text
 
+    def _send_gemini_stream(self, user_id: str, message: str, user_profile: dict = None):
+        """Send message via Gemini and yield the response chunks."""
+        history = self.get_history(user_id)
+
+        # Build Gemini-compatible history
+        gemini_history = []
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "model"
+            gemini_history.append({"role": role, "parts": [msg["content"]]})
+
+        if user_profile:
+            profile_context = f"The user's current profile is: {json.dumps(user_profile)}. Use this to tailor your responses and do not ask them for this information again."
+            gemini_history.insert(0, {"role": "user", "parts": [profile_context]})
+            gemini_history.insert(1, {"role": "model", "parts": ["Understood. I will use this profile context for our conversation."]})
+
+        chat = self._gemini_model.start_chat(history=gemini_history)
+        response = chat.send_message(message, stream=True)
+        for chunk in response:
+            yield chunk.text
+
     # ── Groq Fallback Chat ────────────────────────────────
 
-    def _send_groq(self, user_id: str, message: str) -> str:
+    def _send_groq(self, user_id: str, message: str, user_profile: dict = None) -> str:
         """Send message via Groq (Llama) fallback."""
         client = self._get_groq_client()
         if client is None:
@@ -224,6 +249,9 @@ class ChatService:
         history = self.get_history(user_id)
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if user_profile:
+            messages[0]["content"] += f"\n\nUSER PROFILE CONTEXT:\n{json.dumps(user_profile)}"
+
         for msg in history:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": message})
@@ -236,9 +264,36 @@ class ChatService:
         )
         return response.choices[0].message.content
 
+    def _send_groq_stream(self, user_id: str, message: str, user_profile: dict = None):
+        """Send message via Groq fallback and yield chunks."""
+        client = self._get_groq_client()
+        if client is None:
+            raise RuntimeError("No fallback provider available")
+
+        history = self.get_history(user_id)
+
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if user_profile:
+            messages[0]["content"] += f"\n\nUSER PROFILE CONTEXT:\n{json.dumps(user_profile)}"
+
+        for msg in history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": message})
+
+        response = client.chat.completions.create(
+            model=GROQ_CHAT_MODEL,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1024,
+            stream=True
+        )
+        for chunk in response:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
     # ── Main Send Method ──────────────────────────────────
 
-    def send_message(self, user_id: str, message: str) -> dict:
+    def send_message(self, user_id: str, message: str, user_profile: dict = None) -> dict:
         """
         Send a user message and get an AI response.
 
@@ -255,11 +310,11 @@ class ChatService:
 
         try:
             if self._should_use_fallback():
-                response_text = self._send_groq(user_id, message)
+                response_text = self._send_groq(user_id, message, user_profile=user_profile)
                 provider = "groq"
             else:
                 try:
-                    response_text = self._send_gemini(user_id, message)
+                    response_text = self._send_gemini(user_id, message, user_profile=user_profile)
                 except Exception as e:
                     error_str = str(e).lower()
                     if "rate" in error_str or "429" in error_str or "quota" in error_str:
@@ -268,7 +323,7 @@ class ChatService:
                         )
                         self._use_fallback = True
                         self._last_gemini_failure = time.time()
-                        response_text = self._send_groq(user_id, message)
+                        response_text = self._send_groq(user_id, message, user_profile=user_profile)
                         provider = "groq"
                     else:
                         raise
@@ -292,6 +347,59 @@ class ChatService:
             "provider": provider,
             "history_length": len(history),
         }
+
+    def send_message_stream(self, user_id: str, message: str, user_profile: dict = None):
+        """
+        Send a user message and yield chunks as they arrive.
+        Tries Gemini first, falls back to Groq on rate-limit or failure.
+        """
+        provider = "gemini"
+        full_response = ""
+
+        try:
+            if self._should_use_fallback():
+                stream = self._send_groq_stream(user_id, message, user_profile=user_profile)
+                provider = "groq"
+            else:
+                try:
+                    stream = self._send_gemini_stream(user_id, message, user_profile=user_profile)
+                    first_chunk = next(stream)
+                    full_response += first_chunk
+                    yield first_chunk
+                except StopIteration:
+                    pass
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "rate" in error_str or "429" in error_str or "quota" in error_str:
+                        console.print(
+                            f"[yellow]! Gemini rate-limited, switching to Groq stream: {e}[/yellow]"
+                        )
+                        self._use_fallback = True
+                        self._last_gemini_failure = time.time()
+                        stream = self._send_groq_stream(user_id, message, user_profile=user_profile)
+                        provider = "groq"
+                    else:
+                        raise
+
+            for chunk in stream:
+                full_response += chunk
+                yield chunk
+
+        except Exception as e:
+            console.print(f"[red]X Chat stream error: {e}[/red]")
+            error_msg = (
+                "I apologize, but I'm experiencing technical difficulties right now. "
+                "Please try again in a moment. If the issue persists, you can still "
+                "explore our product catalog while I get back online. 🔧"
+            )
+            yield error_msg
+            full_response += error_msg
+            provider = "error"
+
+        # Update conversation history
+        history = self.get_history(user_id)
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": full_response})
 
     # ── Context Extraction ────────────────────────────────
 

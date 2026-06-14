@@ -1,9 +1,14 @@
+import { useRef, useCallback, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Sliders, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
+import { Sliders, RefreshCw, TrendingUp, TrendingDown, WifiOff } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { formatCurrency } from '../../lib/utils'
 import { runSimulation } from '../../mocks/simulation'
+import { api, ApiError } from '../../lib/apiClient'
+import type { SimulateRequest, BackendSimulateResponse } from '../../types/api'
+import { mapBackendSimulation } from '../../types/api'
 import { cn } from '../../lib/utils'
+import type { SimulationResult } from '../../types'
 
 function SliderRow({
   label, value, min, max, step = 1, unit = '',
@@ -33,14 +38,64 @@ function SliderRow({
 
 export default function WhatIfPanel() {
   const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults } = useAppStore()
+  const [usingFallback, setUsingFallback] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Debounced API simulation call
+  const runApiSimulation = useCallback(async (params: typeof whatIfParams) => {
+    if (!profile || goals.length === 0) return
+
+    // Build the SimulateRequest from profile + params + goals
+    const payload: SimulateRequest = {
+      age: profile.age,
+      annual_income: profile.income * 12,
+      monthly_expenses: undefined,
+      dependents: profile.familySize,
+      risk_appetite: profile.riskAppetite,
+      goals: goals.map(g => ({
+        goal_type: g.label,
+        target_amount: g.corpusNeeded,
+        target_year: g.targetAge,
+        priority: 1,
+      })),
+    }
+
+    try {
+      const res = await api.post<BackendSimulateResponse>('/api/simulate', payload)
+      const mapped: SimulationResult[] = res.goals.map(goalResult => {
+        const result = mapBackendSimulation(goalResult)
+        // Try to find the matching local goal by type
+        const localGoal = goals.find(g => g.label === goalResult.goal_type)
+        if (localGoal) result.goalId = localGoal.id
+        return result
+      })
+      setSimulationResults(mapped)
+      setUsingFallback(false)
+    } catch {
+      // Fall back to local simulation
+      console.warn('Simulation API unavailable, using local calculation')
+      const results = runSimulation(profile, params, goals)
+      setSimulationResults(results)
+      setUsingFallback(true)
+    }
+  }, [profile, goals, setSimulationResults])
 
   function update(key: keyof typeof whatIfParams, value: number | boolean) {
     const next = { ...whatIfParams, [key]: value }
     setWhatIfParams({ [key]: value })
-    if (profile) {
-      const results = runSimulation(profile, next, goals)
-      setSimulationResults(results)
-    }
+
+    // Debounce API calls (500ms)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      if (profile) {
+        runApiSimulation(next).catch(() => {
+          // Fallback to local
+          const results = runSimulation(profile, next, goals)
+          setSimulationResults(results)
+          setUsingFallback(true)
+        })
+      }
+    }, 500)
   }
 
   function reset() {
@@ -52,7 +107,12 @@ export default function WhatIfPanel() {
       annualIncrementPercent: 8,
     }
     setWhatIfParams(defaults)
-    if (profile) setSimulationResults(runSimulation(profile, defaults, goals))
+    if (profile) {
+      runApiSimulation(defaults).catch(() => {
+        setSimulationResults(runSimulation(profile, defaults, goals))
+        setUsingFallback(true)
+      })
+    }
   }
 
   const totalCorpus = simulationResults.reduce((s, r) => s + r.corpusNeeded, 0)
@@ -69,6 +129,11 @@ export default function WhatIfPanel() {
             <div className="flex items-center gap-2">
               <Sliders size={16} className="text-brand-orange" />
               <h3 className="font-display font-semibold text-gray-900 text-sm">What-If Controls</h3>
+              {usingFallback && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-amber-500">
+                  <WifiOff size={9} /> offline
+                </span>
+              )}
             </div>
             <button onClick={reset} className="btn-ghost text-xs py-1 px-2">
               <RefreshCw size={12} /> Reset
@@ -147,14 +212,14 @@ export default function WhatIfPanel() {
           <div className="space-y-4">
             {simulationResults.map(result => {
               const goal = goals.find(g => g.id === result.goalId)
-              const pct = Math.round((result.coveredAmount / result.corpusNeeded) * 100)
+              const pct = result.corpusNeeded > 0 ? Math.round((result.coveredAmount / result.corpusNeeded) * 100) : 0
               const isGood = pct >= 80
               return (
                 <div key={result.goalId}>
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm">{goal?.icon}</span>
-                      <span className="text-xs font-medium text-gray-700">{goal?.label}</span>
+                      <span className="text-sm">{goal?.icon ?? '🎯'}</span>
+                      <span className="text-xs font-medium text-gray-700">{goal?.label ?? result.goalId}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {isGood

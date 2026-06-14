@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight, ArrowLeft, CheckCircle2, User, MapPin, IndianRupee, Heart, Target, TrendingUp } from 'lucide-react'
+import { ArrowRight, ArrowLeft, CheckCircle2, User, MapPin, IndianRupee, Heart, Target, TrendingUp, Loader2 } from 'lucide-react'
 import { useAppStore } from '../../store'
 import type { UserProfile } from '../../types'
+import type { UpdateProfileRequest } from '../../types/api'
+import { api, ApiError } from '../../lib/apiClient'
 import { cn } from '../../lib/utils'
 
 const STEPS = [
@@ -25,12 +27,18 @@ const RISK_OPTIONS: { value: UserProfile['riskAppetite']; label: string; desc: s
 ]
 
 export default function OnboardingFlow() {
-  const { setProfile, setActiveTab } = useAppStore()
+  const { setProfile, setActiveTab, user, profile } = useAppStore()
   const [step, setStep] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [form, setForm] = useState({
-    name: '', age: 30, city: '', income: 100000,
-    familySize: 2, goals: [] as string[],
-    riskAppetite: 'moderate' as UserProfile['riskAppetite'],
+    name: profile?.name || '', 
+    age: profile?.age || 30, 
+    city: profile?.city || '', 
+    income: profile?.income || 100000,
+    familySize: profile?.familySize || 2, 
+    goals: profile?.goals || [] as string[],
+    riskAppetite: (profile?.riskAppetite || 'moderate') as UserProfile['riskAppetite'],
   })
 
   function update(field: string, value: unknown) {
@@ -47,7 +55,26 @@ export default function OnboardingFlow() {
   function next() { if (step < STEPS.length - 1) setStep(s => s + 1) }
   function back() { if (step > 0) setStep(s => s - 1) }
 
-  function finish() {
+  async function finish() {
+    setError('')
+    setLoading(true)
+    try {
+      // Map frontend form → backend UpdateProfileRequest
+      const payload: UpdateProfileRequest = {
+        full_name: form.name || user?.name || null,
+        age: form.age,
+        annual_income: form.income * 12, // frontend is monthly, backend is annual
+        dependents: form.familySize,
+        risk_appetite: form.riskAppetite,
+        city: form.city || null,
+      }
+      await api.put('/users/me', payload)
+    } catch (err: unknown) {
+      // Non-blocking — save profile locally even if API fails
+      console.warn('Profile save to backend failed:', err instanceof ApiError ? err.detail : err)
+    } finally {
+      setLoading(false)
+    }
     setProfile(form)
     setActiveTab('chat')
   }
@@ -227,8 +254,9 @@ export default function OnboardingFlow() {
             Continue <ArrowRight size={15} />
           </button>
         ) : (
-          <button onClick={finish} className="btn-primary flex-1 justify-center">
-            Build my plan <ArrowRight size={15} />
+          <button onClick={finish} disabled={loading} className="btn-primary flex-1 justify-center">
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+            {loading ? 'Saving...' : 'Build my plan'}
           </button>
         )}
       </div>

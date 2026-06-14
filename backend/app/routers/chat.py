@@ -8,6 +8,7 @@ from app.services.chat_wrapper import stream_chat_response, extract_user_context
 from app.services.conversation_service import ConversationService
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limiter import limiter, AI_RATE_LIMIT
+from app.database import get_admin_client
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 
@@ -47,10 +48,15 @@ async def chat(
     # Save user message to DB
     conv_service.add_message(conversation_id, user_id, "user", body.message)
 
+    # Fetch user profile to inject into AI context
+    client = get_admin_client()
+    profile_response = client.table("profiles").select("*").eq("id", user_id).single().execute()
+    user_profile = profile_response.data if profile_response.data else None
+
     # Stream response via P3's ChatService
     async def event_generator():
         full_response = ""
-        async for event in stream_chat_response(user_id, body.message):
+        async for event in stream_chat_response(user_id, body.message, user_profile=user_profile):
             # Capture the full response from "done" events
             if '"type": "done"' in event:
                 import json

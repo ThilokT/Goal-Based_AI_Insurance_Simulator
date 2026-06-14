@@ -4,8 +4,12 @@ import { motion } from 'framer-motion'
 import { useAppStore } from '../../store'
 import { formatCurrency } from '../../lib/utils'
 import { runSimulation } from '../../mocks/simulation'
+import { api } from '../../lib/apiClient'
+import type { SimulateRequest, BackendSimulateResponse } from '../../types/api'
+import { mapBackendSimulation } from '../../types/api'
 import { CATEGORY_META } from '../../mocks/products'
-import type { LifeGoal, SimulationResult } from '../../types'
+import type { SimulationResult } from '../../types'
+import FiveYearSnapshot from '../simulation/FiveYearSnapshot'
 
 const CATEGORY_COLORS: Record<string, string> = {
   protection:          '#F36F21',
@@ -40,9 +44,39 @@ export default function LifeJourneyTimeline() {
   const maxAge = 80
 
   useEffect(() => {
-    if (!profile) return
-    const results = runSimulation(profile, whatIfParams, goals)
-    setSimulationResults(results)
+    if (!profile || goals.length === 0) return
+
+    // Try backend simulation API first, fall back to local mock
+    async function runSim() {
+      try {
+        const payload: SimulateRequest = {
+          age: profile!.age,
+          annual_income: profile!.income * 12,
+          dependents: profile!.familySize,
+          risk_appetite: profile!.riskAppetite,
+          goals: goals.map(g => ({
+            goal_type: g.label,
+            target_amount: g.corpusNeeded,
+            target_year: g.targetAge,
+            priority: 1,
+          })),
+        }
+        const res = await api.post<BackendSimulateResponse>('/api/simulate', payload)
+        const mapped: SimulationResult[] = res.goals.map(goalResult => {
+          const result = mapBackendSimulation(goalResult)
+          const localGoal = goals.find(g => g.label === goalResult.goal_type)
+          if (localGoal) result.goalId = localGoal.id
+          return result
+        })
+        setSimulationResults(mapped)
+      } catch {
+        // Backend unavailable — fall back to local simulation
+        console.warn('Timeline: Simulation API unavailable, using local calculation')
+        const results = runSimulation(profile!, whatIfParams, goals)
+        setSimulationResults(results)
+      }
+    }
+    runSim()
   }, [profile, whatIfParams, goals])
 
   useEffect(() => {
@@ -210,6 +244,8 @@ export default function LifeJourneyTimeline() {
 
   return (
     <div className="space-y-4">
+      <FiveYearSnapshot />
+      
       <div className="card">
         <div className="flex items-start justify-between mb-2">
           <div>

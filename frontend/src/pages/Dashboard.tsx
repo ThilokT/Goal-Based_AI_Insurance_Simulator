@@ -1,18 +1,35 @@
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, MessageSquare, TrendingUp, Package, Sliders, Target, IndianRupee, Users, Shield } from 'lucide-react'
 import { useAppStore } from '../store'
 import { formatCurrency } from '../lib/utils'
+import { api } from '../lib/apiClient'
+import type { BackendProductListResponse } from '../types/api'
 import { MOCK_PRODUCTS } from '../mocks/products'
 
 const QUICK_ACTIONS = [
   { id: 'chat',     label: 'Talk to AI Advisor',   icon: MessageSquare, desc: 'Share your goals in a conversation', color: 'gradient-navy' },
   { id: 'timeline', label: 'Life Journey Timeline', icon: TrendingUp,    desc: 'See your milestones visualised',    color: 'gradient-orange' },
   { id: 'simulate', label: 'Run What-If Scenarios', icon: Sliders,       desc: 'Adjust retirement age, inflation', color: 'bg-purple-600' },
-  { id: 'products', label: 'Explore Products',      icon: Package,       desc: '9 products across 5 categories',   color: 'bg-green-600' },
+  { id: 'products', label: 'Explore Products',      icon: Package,       desc: 'Products across 5 categories',     color: 'bg-green-600' },
 ]
 
 export default function Dashboard() {
-  const { user, profile, simulationResults, setActiveTab } = useAppStore()
+  const { user, profile, simulationResults, setActiveTab, productCount, setProductCount } = useAppStore()
+
+  // Fetch live product count on mount
+  useEffect(() => {
+    async function fetchCount() {
+      try {
+        const res = await api.get<BackendProductListResponse>('/api/products')
+        setProductCount(res.total || res.products.length)
+      } catch {
+        // Fallback to mock data count
+        if (productCount === 0) setProductCount(MOCK_PRODUCTS.length)
+      }
+    }
+    if (productCount === 0) fetchCount()
+  }, [])
 
   const totalGap = simulationResults.reduce((s, r) => s + r.gap, 0)
   const totalCovered = simulationResults.reduce((s, r) => s + r.coveredAmount, 0)
@@ -87,7 +104,7 @@ export default function Dashboard() {
           { icon: Target, label: 'Goals mapped', value: profile?.goals.length ?? 0, sub: 'life milestones', color: 'text-brand-orange' },
           { icon: IndianRupee, label: 'Monthly income', value: profile ? `₹${(profile.income / 1000).toFixed(0)}K` : '—', sub: 'household income', color: 'text-brand-navy' },
           { icon: Users, label: 'Family size', value: profile?.familySize ?? '—', sub: 'dependants', color: 'text-purple-600' },
-          { icon: Shield, label: 'Products matched', value: MOCK_PRODUCTS.length, sub: 'across 5 categories', color: 'text-green-600' },
+          { icon: Shield, label: 'Products matched', value: productCount || MOCK_PRODUCTS.length, sub: 'across 5 categories', color: 'text-green-600' },
         ].map(({ icon: Icon, label, value, sub, color }, i) => (
           <motion.div
             key={label}

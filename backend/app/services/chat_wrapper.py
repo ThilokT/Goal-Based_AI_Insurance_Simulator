@@ -26,6 +26,7 @@ def get_chat_service() -> ChatService:
 async def stream_chat_response(
     user_id: str,
     message: str,
+    user_profile: dict = None,
 ) -> AsyncGenerator[str, None]:
     """
     Generator that yields SSE-formatted events for a chat response.
@@ -38,23 +39,21 @@ async def stream_chat_response(
     chat = get_chat_service()
 
     try:
-        # Get the full response (ChatService handles memory internally)
-        response = chat.send_message(user_id, message)
+        full_response = ""
+        stream = chat.send_message_stream(user_id, message, user_profile=user_profile)
 
-        if not response:
+        for chunk in stream:
+            if not chunk:
+                continue
+            full_response += chunk
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+        if not full_response:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Empty response from AI'})}\n\n"
             return
 
-        # Simulate streaming by chunking the response
-        # (P3's ChatService returns full text; real streaming can be added later)
-        words = response.split()
-        chunk_size = 5  # Send 5 words at a time for smooth UX
-        for i in range(0, len(words), chunk_size):
-            chunk = " ".join(words[i : i + chunk_size])
-            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-
         # Final done event with full response
-        yield f"data: {json.dumps({'type': 'done', 'content': response})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'content': full_response})}\n\n"
 
     except Exception as e:
         logger.error(f"Chat error for user {user_id}: {e}")
@@ -70,7 +69,7 @@ def extract_user_context(user_id: str, messages: list[dict]) -> dict:
     """
     chat = get_chat_service()
     try:
-        profile = chat.extract_context(messages)
+        profile = chat.extract_context_from_messages(messages)
         if profile:
             return profile.model_dump(exclude_none=True)
         return {}

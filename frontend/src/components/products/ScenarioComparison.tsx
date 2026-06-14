@@ -1,15 +1,41 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeftRight, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { ArrowLeftRight, TrendingUp, TrendingDown, Loader2, WifiOff } from 'lucide-react'
 import { MOCK_PRODUCTS } from '../../mocks/products'
+import { api } from '../../lib/apiClient'
+import type { BackendProductListResponse } from '../../types/api'
+import { mapBackendProduct } from '../../types/api'
 import ProductCard from './ProductCard'
 import { formatCurrency } from '../../lib/utils'
 import { useAppStore } from '../../store'
 import { cn } from '../../lib/utils'
+import type { Product } from '../../types'
 
 export default function ScenarioComparison() {
   const { simulationResults, goals, whatIfParams } = useAppStore()
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadProducts() {
+      setLoading(true)
+      try {
+        const res = await api.get<BackendProductListResponse>('/api/products')
+        if (!cancelled) {
+          const mapped = res.products.map(mapBackendProduct)
+          setProducts(mapped.length > 0 ? mapped : MOCK_PRODUCTS)
+        }
+      } catch {
+        if (!cancelled) setProducts(MOCK_PRODUCTS)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadProducts()
+    return () => { cancelled = true }
+  }, [])
 
   function toggleProduct(id: string) {
     setSelectedIds(prev =>
@@ -19,7 +45,7 @@ export default function ScenarioComparison() {
     )
   }
 
-  const selectedProducts = selectedIds.map(id => MOCK_PRODUCTS.find(p => p.id === id)!).filter(Boolean)
+  const selectedProducts = selectedIds.map(id => products.find(p => p.id === id)!).filter(Boolean)
 
   const metrics = [
     { label: 'Min. Premium', key: (p: typeof selectedProducts[0]) => formatCurrency(p.minPremium) + '/yr' },
@@ -30,6 +56,14 @@ export default function ScenarioComparison() {
     { label: 'Ideal for', key: (p: typeof selectedProducts[0]) => p.idealFor.slice(0, 2).join(', ') },
   ]
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={28} className="animate-spin text-brand-orange" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -39,7 +73,7 @@ export default function ScenarioComparison() {
 
       {/* Selection */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {MOCK_PRODUCTS.map((p, i) => (
+        {products.map((p, i) => (
           <ProductCard
             key={p.id}
             product={p}

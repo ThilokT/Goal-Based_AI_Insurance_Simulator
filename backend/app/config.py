@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # ── App Settings ──────────────────────────────────────
     ENVIRONMENT: str = "development"
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000"
     API_RATE_LIMIT: str = "30/minute"
     CRUD_RATE_LIMIT: str = "60/minute"
 

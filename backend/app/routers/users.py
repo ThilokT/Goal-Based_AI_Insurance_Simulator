@@ -61,17 +61,28 @@ async def update_my_profile(
             detail="No fields to update",
         )
 
-    response = (
-        client.table("profiles")
-        .update(update_data)
-        .eq("id", user["user_id"])
-        .execute()
-    )
+    # Add the ID for upsert
+    update_data["id"] = user["user_id"]
+
+    try:
+        response = (
+            client.table("profiles")
+            .upsert(update_data)
+            .execute()
+        )
+    except Exception as e:
+        import logging
+        import traceback
+        from fastapi.responses import JSONResponse
+        logging.getLogger("lifemap").error(f"Error updating profile: {e}")
+        with open("error_log.txt", "w") as f:
+            f.write(str(e) + "\n" + traceback.format_exc())
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
     if not response.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Profile not found",
+            detail="Profile could not be updated",
         )
 
     return UserProfileResponse(id=user["user_id"], **response.data[0])

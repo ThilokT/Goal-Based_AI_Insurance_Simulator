@@ -1,5 +1,8 @@
+import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAppStore } from './store'
+import { api } from './lib/apiClient'
+import type { BackendUserProfile } from './types/api'
 import AuthPage from './components/auth/AuthPage'
 import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
@@ -51,7 +54,23 @@ function AppContent() {
 }
 
 export default function App() {
-  const { user, activeTab } = useAppStore()
+  const { user, activeTab, accessToken, logout, loadGoals } = useAppStore()
+
+  // On mount: revalidate session if token exists
+  useEffect(() => {
+    if (!accessToken) return
+    async function revalidate() {
+      try {
+        await api.get<BackendUserProfile>('/users/me')
+        // Token is valid — also pre-load goals
+        loadGoals()
+      } catch {
+        // Token expired or invalid — force logout
+        logout()
+      }
+    }
+    revalidate()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Show landing if user wants to see it explicitly
   if (activeTab === 'landing') return <LandingPage />

@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Bell, Sun, Moon, Menu, LogOut, ChevronDown } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { cn } from '../../lib/utils'
+import ProfileModal from '../profile/ProfileModal'
 
 export default function Navbar() {
   const { user, setUser, darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useAppStore()
+  const [showProfileModal, setShowProfileModal] = useState(false)
 
   return (
     <motion.header
@@ -54,9 +57,13 @@ export default function Navbar() {
 
           {user && (
             <div className="flex items-center gap-2 ml-1 pl-3 border-l border-gray-200">
-              <div className="w-8 h-8 rounded-full gradient-orange flex items-center justify-center shadow-sm">
+              <button 
+                onClick={() => setShowProfileModal(true)}
+                title="Edit Profile"
+                className="w-8 h-8 rounded-full gradient-orange flex items-center justify-center shadow-sm hover:ring-2 hover:ring-brand-orange/50 transition-all cursor-pointer"
+              >
                 <span className="text-white text-xs font-bold">{user.avatarInitials}</span>
-              </div>
+              </button>
               <div className="hidden sm:block">
                 <p className="text-xs font-semibold text-gray-800 leading-tight">{user.name}</p>
                 <p className="text-[10px] text-gray-400 leading-tight">{user.email}</p>
@@ -72,6 +79,7 @@ export default function Navbar() {
           )}
         </div>
       </div>
+      <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
     </motion.header>
   )
 }
