@@ -34,7 +34,11 @@ async def get_my_profile(request: Request, user: dict = Depends(get_current_user
             detail="Profile not found",
         )
 
-    return UserProfileResponse(id=user["user_id"], **response.data[0])
+    profile_data = response.data[0]
+    if "id" not in profile_data:
+        profile_data["id"] = user["user_id"]
+        
+    return UserProfileResponse(**profile_data)
 
 
 @router.put(
@@ -83,4 +87,8 @@ async def update_my_profile(
             detail="Profile could not be updated",
         )
 
-    return UserProfileResponse(id=user["user_id"], **response.data[0])
+    profile_data = response.data[0]
+    if "id" not in profile_data:
+        profile_data["id"] = user["user_id"]
+        
+    return UserProfileResponse(**profile_data)

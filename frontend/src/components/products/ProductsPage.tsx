@@ -9,6 +9,7 @@ import { formatCurrency } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import type { Product, ProductCategory } from '../../types'
 import { useAppStore } from '../../store'
+import ProductSimulationModal from './ProductSimulationModal'
 
 const CATEGORIES: { value: ProductCategory | 'all'; label: string }[] = [
   { value: 'all',              label: 'All Products' },
@@ -26,7 +27,8 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS)
   const [loading, setLoading] = useState(true)
   const [usingFallback, setUsingFallback] = useState(false)
-  const { setProductCount } = useAppStore()
+  const [simulatingProduct, setSimulatingProduct] = useState<Product | null>(null)
+  const { profile, setProductCount } = useAppStore()
 
   useEffect(() => {
     let cancelled = false
@@ -194,9 +196,20 @@ export default function ProductsPage() {
                             ))}
                           </div>
                         </div>
-                        <button className="btn-outline w-full justify-center text-xs py-2">
-                          View full brochure <ExternalLink size={12} />
-                        </button>
+                        <div className="flex gap-2 pt-2">
+                          <button 
+                            className="btn-primary flex-1 justify-center text-xs py-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSimulatingProduct(product);
+                            }}
+                          >
+                            Simulate for my profile
+                          </button>
+                          <button className="btn-outline flex-none justify-center text-xs py-2 px-3">
+                            <ExternalLink size={14} />
+                          </button>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -219,6 +232,14 @@ export default function ProductsPage() {
           <p className="text-sm mt-1">Try a different search term or category</p>
         </div>
       )}
+
+      {/* Simulation Modal */}
+      <ProductSimulationModal 
+        product={simulatingProduct}
+        profile={profile}
+        isOpen={!!simulatingProduct}
+        onClose={() => setSimulatingProduct(null)}
+      />
     </div>
   )
 }

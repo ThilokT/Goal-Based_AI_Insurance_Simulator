@@ -116,12 +116,12 @@ export const useAppStore = create<AppState>()(
           if (res && res.age) {
             set((state) => ({
               profile: {
-                name: res.full_name || 'Guest',
-                age: res.age || 30,
-                city: res.city || 'Mumbai',
-                income: (res.annual_income || 1000000) / 12,
-                riskAppetite: (res.risk_appetite || 'moderate').toLowerCase(),
-                familySize: res.dependents || 0,
+                name: res.full_name || undefined,
+                age: res.age || undefined,
+                city: res.city || undefined,
+                income: res.annual_income ? res.annual_income / 12 : undefined,
+                riskAppetite: res.risk_appetite ? res.risk_appetite.toLowerCase() : undefined,
+                familySize: res.dependents !== undefined && res.dependents !== null ? res.dependents : undefined,
                 goals: state.profile?.goals || [],
               }
             }))
@@ -287,6 +287,8 @@ export const useAppStore = create<AppState>()(
         chatTurn: s.chatTurn,
         conversationId: s.conversationId,
         goals: s.goals,
+        activeTab: s.activeTab,
+        sidebarOpen: s.sidebarOpen,
       }),
     }
   )

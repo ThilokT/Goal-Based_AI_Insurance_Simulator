@@ -217,9 +217,16 @@ export default function WhatIfPanel() {
               return (
                 <div key={result.goalId}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm">{goal?.icon ?? '🎯'}</span>
                       <span className="text-xs font-medium text-gray-700">{goal?.label ?? result.goalId}</span>
+                      {result.recommendedProducts && result.recommendedProducts.length > 0 && (
+                        <div className="flex flex-wrap gap-1 ml-1">
+                          {result.recommendedProducts.map(cat => (
+                            <span key={cat} className="text-[9px] uppercase tracking-wider bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{cat}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {isGood

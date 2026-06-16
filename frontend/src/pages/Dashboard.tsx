@@ -15,7 +15,7 @@ const QUICK_ACTIONS = [
 ]
 
 export default function Dashboard() {
-  const { user, profile, simulationResults, setActiveTab, productCount, setProductCount } = useAppStore()
+  const { user, profile, goals, simulationResults, setActiveTab, productCount, setProductCount } = useAppStore()
 
   // Fetch live product count on mount
   useEffect(() => {
@@ -45,8 +45,8 @@ export default function Dashboard() {
             <p className="text-white/60 text-sm mb-1">Welcome back</p>
             <h1 className="text-2xl font-display font-bold mb-1">{user?.name ?? 'Explorer'}</h1>
             {profile ? (
-              <p className="text-white/70 text-sm">
-                Age {profile.age} · {profile.city} · {profile.goals.length} goal{profile.goals.length !== 1 ? 's' : ''} planned
+              <p className="text-white/70 text-sm capitalize">
+                Age {profile.age || '—'} · {profile.city || 'Add City'} · {profile.riskAppetite ? profile.riskAppetite + ' risk' : 'Add Risk'} · {goals.length} goal{goals.length !== 1 ? 's' : ''} planned
               </p>
             ) : (
               <p className="text-white/70 text-sm">Start by chatting with your AI advisor</p>
@@ -101,9 +101,9 @@ export default function Dashboard() {
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Target, label: 'Goals mapped', value: profile?.goals.length ?? 0, sub: 'life milestones', color: 'text-brand-orange' },
-          { icon: IndianRupee, label: 'Monthly income', value: profile ? `₹${(profile.income / 1000).toFixed(0)}K` : '—', sub: 'household income', color: 'text-brand-navy' },
-          { icon: Users, label: 'Family size', value: profile?.familySize ?? '—', sub: 'dependants', color: 'text-purple-600' },
+          { icon: Target, label: 'Goals mapped', value: goals.length, sub: 'life milestones', color: 'text-brand-orange' },
+          { icon: IndianRupee, label: 'Monthly income', value: profile?.income ? `₹${(profile.income / 1000).toFixed(0)}K` : 'Add Income', sub: 'household income', color: 'text-brand-navy' },
+          { icon: Users, label: 'Family size', value: profile?.familySize ?? 'Add Dependents', sub: 'dependants', color: 'text-purple-600' },
           { icon: Shield, label: 'Products matched', value: productCount || MOCK_PRODUCTS.length, sub: 'across 5 categories', color: 'text-green-600' },
         ].map(({ icon: Icon, label, value, sub, color }, i) => (
           <motion.div

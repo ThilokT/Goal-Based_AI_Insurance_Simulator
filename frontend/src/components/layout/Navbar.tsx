@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils'
 import ProfileModal from '../profile/ProfileModal'
 
 export default function Navbar() {
-  const { user, setUser, darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useAppStore()
+  const { user, logout, darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useAppStore()
   const [showProfileModal, setShowProfileModal] = useState(false)
 
   return (
@@ -69,7 +69,7 @@ export default function Navbar() {
                 <p className="text-[10px] text-gray-400 leading-tight">{user.email}</p>
               </div>
               <button
-                onClick={() => setUser(null)}
+                onClick={() => logout()}
                 className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 transition-colors text-gray-400 ml-1"
                 title="Sign out"
               >

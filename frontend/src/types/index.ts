@@ -24,12 +24,12 @@ export interface LifeGoal {
 }
 
 export interface UserProfile {
-  name: string
-  age: number
-  city: string
-  income: number
-  riskAppetite: 'conservative' | 'moderate' | 'aggressive'
-  familySize: number
+  name?: string
+  age?: number
+  city?: string
+  income?: number
+  riskAppetite?: 'conservative' | 'moderate' | 'aggressive'
+  familySize?: number
   goals: string[]
 }
 

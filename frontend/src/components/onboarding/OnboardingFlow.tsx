@@ -33,12 +33,12 @@ export default function OnboardingFlow() {
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     name: profile?.name || '', 
-    age: profile?.age || 30, 
+    age: profile?.age, 
     city: profile?.city || '', 
-    income: profile?.income || 100000,
-    familySize: profile?.familySize || 2, 
+    income: profile?.income || 0,
+    familySize: profile?.familySize || 0, 
     goals: profile?.goals || [] as string[],
-    riskAppetite: (profile?.riskAppetite || 'moderate') as UserProfile['riskAppetite'],
+    riskAppetite: profile?.riskAppetite as UserProfile['riskAppetite'],
   })
 
   function update(field: string, value: unknown) {
@@ -63,12 +63,21 @@ export default function OnboardingFlow() {
       const payload: UpdateProfileRequest = {
         full_name: form.name || user?.name || null,
         age: form.age,
-        annual_income: form.income * 12, // frontend is monthly, backend is annual
+        annual_income: (form.income || 0) * 12, // frontend is monthly, backend is annual
         dependents: form.familySize,
         risk_appetite: form.riskAppetite,
         city: form.city || null,
       }
       await api.put('/users/me', payload)
+
+      const { createGoal } = useAppStore.getState()
+      for (const g of form.goals) {
+        await createGoal({
+          goal_type: g,
+          target_amount: 1000000, // Default baseline for onboarding
+          target_year: (form.age || 30) + 10,
+        }).catch(e => console.warn('Failed to save goal:', e))
+      }
     } catch (err: unknown) {
       // Non-blocking — save profile locally even if API fails
       console.warn('Profile save to backend failed:', err instanceof ApiError ? err.detail : err)
@@ -89,8 +98,8 @@ export default function OnboardingFlow() {
       <div>
         <label className="text-xs font-medium text-gray-600 mb-1 block">Your age</label>
         <div className="flex items-center gap-3">
-          <input type="range" min={18} max={65} value={form.age} onChange={e => update('age', +e.target.value)} className="flex-1 accent-brand-orange" />
-          <span className="text-brand-navy font-bold w-10 text-center">{form.age}</span>
+          <input type="range" min={18} max={65} value={form.age || 18} onChange={e => update('age', +e.target.value)} className="flex-1 accent-brand-orange" />
+          <span className="text-brand-navy font-bold w-10 text-center">{form.age || '?'}</span>
         </div>
       </div>
       <div>
@@ -104,8 +113,8 @@ export default function OnboardingFlow() {
       <div>
         <label className="text-xs font-medium text-gray-600 mb-1 block">Monthly household income</label>
         <div className="flex items-center gap-3">
-          <input type="range" min={20000} max={1000000} step={10000} value={form.income} onChange={e => update('income', +e.target.value)} className="flex-1 accent-brand-orange" />
-          <span className="text-brand-navy font-bold text-sm w-16 text-right">₹{(form.income / 1000).toFixed(0)}K</span>
+          <input type="range" min={20000} max={1000000} step={10000} value={form.income || 20000} onChange={e => update('income', +e.target.value)} className="flex-1 accent-brand-orange" />
+          <span className="text-brand-navy font-bold text-sm w-16 text-right">₹{((form.income || 0) / 1000).toFixed(0)}K</span>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">

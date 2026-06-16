@@ -56,21 +56,17 @@ function AppContent() {
 export default function App() {
   const { user, activeTab, accessToken, logout, loadGoals } = useAppStore()
 
-  // On mount: revalidate session if token exists
+  // On mount or login: revalidate session and load initial data
   useEffect(() => {
     if (!accessToken) return
-    async function revalidate() {
-      try {
-        await api.get<BackendUserProfile>('/users/me')
-        // Token is valid — also pre-load goals
-        loadGoals()
-      } catch {
-        // Token expired or invalid — force logout
-        logout()
-      }
+    const store = useAppStore.getState()
+    store.loadProfile()
+    loadGoals()
+    store.loadConversations()
+    if (store.conversationId) {
+      store.loadConversationDetails(store.conversationId)
     }
-    revalidate()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accessToken, loadGoals])
 
   // Show landing if user wants to see it explicitly
   if (activeTab === 'landing') return <LandingPage />

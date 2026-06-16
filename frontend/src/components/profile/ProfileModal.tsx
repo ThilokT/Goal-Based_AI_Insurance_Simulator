@@ -4,6 +4,13 @@ import { X, Save, User, Loader2 } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { api } from '../../lib/apiClient'
 import type { UserProfile } from '../../types'
+import { cn } from '../../lib/utils'
+import { CheckCircle2 } from 'lucide-react'
+
+const GOALS_OPTIONS = [
+  "Child's Higher Education", "Child's Marriage", 'Buy a Home',
+  'Retirement Planning', 'Leave a Legacy', 'Business Fund', 'Travel & Experiences',
+]
 
 interface ProfileModalProps {
   isOpen: boolean
@@ -11,15 +18,16 @@ interface ProfileModalProps {
 }
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
-  const { profile, setProfile, loadProfile } = useAppStore()
+  const { profile, setProfile, loadProfile, goals, createGoal, deleteGoal } = useAppStore()
   
   const [formData, setFormData] = useState<Partial<UserProfile>>({
     name: '',
-    age: 30,
-    city: 'Mumbai',
-    income: 1000000 / 12,
-    riskAppetite: 'moderate',
-    familySize: 0,
+    age: undefined,
+    city: '',
+    income: undefined,
+    riskAppetite: undefined,
+    familySize: undefined,
+    goals: [],
   })
   
   const [isSaving, setIsSaving] = useState(false)
@@ -34,6 +42,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         income: profile.income,
         riskAppetite: profile.riskAppetite,
         familySize: profile.familySize,
+        goals: goals.map(g => g.label),
       })
     } else if (isOpen && !profile) {
       loadProfile()
@@ -58,6 +67,24 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
       }
       
       await api.put('/users/me', updatePayload)
+      
+      const originalGoalLabels = goals.map(g => g.label)
+      const selectedGoals = formData.goals || []
+      
+      const goalsToAdd = selectedGoals.filter(g => !originalGoalLabels.includes(g))
+      const goalsToRemove = goals.filter(g => !selectedGoals.includes(g.label))
+
+      for (const g of goalsToRemove) {
+        await deleteGoal(g.id).catch(console.error)
+      }
+
+      for (const g of goalsToAdd) {
+        await createGoal({
+          goal_type: g,
+          target_amount: 1000000, 
+          target_year: (formData.age || 30) + 10,
+        }).catch(console.error)
+      }
       
       setProfile({
         ...(profile || { goals: [] }),
@@ -175,6 +202,33 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                     <option value="moderate">Moderate</option>
                     <option value="aggressive">Aggressive</option>
                   </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-semibold text-brand-navy mb-2">Life Goals</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {GOALS_OPTIONS.map(g => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => {
+                        setFormData(f => ({
+                          ...f,
+                          goals: f.goals?.includes(g) ? f.goals.filter(xg => xg !== g) : [...(f.goals || []), g]
+                        }))
+                      }}
+                      className={cn(
+                        'text-left text-xs rounded-xl px-3 py-2 border transition-all leading-snug',
+                        formData.goals?.includes(g)
+                          ? 'border-brand-orange bg-orange-50 text-brand-orange font-medium'
+                          : 'border-gray-200 text-gray-600 hover:border-brand-orange/40'
+                      )}
+                    >
+                      {formData.goals?.includes(g) && <CheckCircle2 size={12} className="inline mr-1 -mt-0.5" />}
+                      {g}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

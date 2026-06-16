@@ -48,7 +48,7 @@ function MessageBubble({ msg }: { msg: Message }) {
         )}
         {msg.isStreaming && <span className="inline-block w-1 h-4 bg-brand-orange/60 animate-pulse ml-0.5 align-middle" />}
         <p className={`text-[10px] mt-1 ${isUser ? 'text-white/60' : 'text-gray-400'}`}>
-          {msg.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+          {new Date(msg.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </p>
       </div>
     </motion.div>
