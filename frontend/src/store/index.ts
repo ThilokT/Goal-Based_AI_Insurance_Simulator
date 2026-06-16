@@ -181,40 +181,78 @@ export const useAppStore = create<AppState>()(
           isChatLoading: !cachedMessages
         })
         try {
-          const res = await api.get<ConversationDetailResponse>(`/api/conversations/${id}`)
-          const mappedMessages: Message[] = res.messages.map(m => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            timestamp: new Date(m.created_at || Date.now()),
-            isStreaming: false
-          }))
-          
-          if (!cachedMessages) {
-            // Progressive loading effect for better UX
-            for (let i = 0; i < mappedMessages.length; i++) {
-              await new Promise(r => setTimeout(r, 80)) // Stagger delay
-              // Check if the user hasn't switched to another conversation during the delay
-              if (get().conversationId !== id) return;
-              
-              set(s => ({
-                messages: mappedMessages.slice(0, i + 1),
-                chatTurn: Math.floor((i + 1) / 2)
-              }))
-            }
-            set((state) => ({
-              isChatLoading: false,
-              chatCache: { ...state.chatCache, [id]: mappedMessages }
+          if (cachedMessages) {
+            // If cached, silently sync in the background
+            const res = await api.get<ConversationDetailResponse>(`/api/conversations/${id}`)
+            const mappedMessages: Message[] = res.messages.map(m => ({
+              id: m.id,
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              timestamp: new Date(m.created_at || Date.now()),
+              isStreaming: false
             }))
-          } else {
-            // Silent background update if already cached
             set((state) => ({
               messages: mappedMessages,
               chatTurn: Math.floor(mappedMessages.length / 2),
               isChatLoading: false,
               chatCache: { ...state.chatCache, [id]: mappedMessages }
             }))
+            return;
           }
+
+          // Not cached: Load incrementally in chunks of 4 (Oldest to Newest)
+          let offset = 0;
+          let hasMore = true;
+          let accumulatedMessages: Message[] = [];
+          
+          while (hasMore) {
+            if (get().conversationId !== id) return;
+            
+            const res = await api.get<ConversationDetailResponse>(`/api/conversations/${id}?limit=4&offset=${offset}`)
+            const chunk: Message[] = res.messages.map(m => ({
+              id: m.id,
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              timestamp: new Date(m.created_at || Date.now()),
+              isStreaming: false
+            }))
+
+            if (chunk.length === 0) {
+              hasMore = false;
+              break;
+            }
+
+            if (offset === 0) {
+              // Display the first chunk (the oldest messages) instantly without staggering
+              // This prevents the auto-scroll logic from pulling the user down to the 4th message
+              accumulatedMessages = chunk
+              set({
+                messages: accumulatedMessages,
+                chatTurn: Math.floor(accumulatedMessages.length / 2)
+              })
+            } else {
+              // Append newer messages to the bottom
+              accumulatedMessages = [...accumulatedMessages, ...chunk]
+              set({
+                messages: accumulatedMessages,
+                chatTurn: Math.floor(accumulatedMessages.length / 2)
+              })
+            }
+
+            offset += chunk.length;
+
+            set((state) => ({
+              chatCache: { ...state.chatCache, [id]: accumulatedMessages }
+            }))
+
+            // If we received fewer than 4 messages, we've reached the very end of the chat
+            if (chunk.length < 4) {
+              hasMore = false;
+            }
+          }
+          
+          // Only turn off the loading bar when all messages have been fully loaded
+          set({ isChatLoading: false })
         } catch (err) {
           console.error('Failed to load conversation details', err)
           set({ isChatLoading: false })

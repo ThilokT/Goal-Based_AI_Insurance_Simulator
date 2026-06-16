@@ -72,9 +72,29 @@ export default function ChatPanel() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const prevConvIdRef = useRef<string | null>(null)
+  const prevLastMsgIdRef = useRef<string | null>(null)
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const lastMsg = messages[messages.length - 1]
+    
+    // Only auto-scroll to bottom if:
+    // 1. We are in the same conversation (not just switching)
+    // 2. We are NOT actively loading historical chunks in the background
+    // 3. AND (A new message was added at the bottom OR the current message is streaming)
+    if (
+      conversationId === prevConvIdRef.current &&
+      !isChatLoading &&
+      lastMsg && (
+        lastMsg.id !== prevLastMsgIdRef.current || lastMsg.isStreaming
+      )
+    ) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
+    prevConvIdRef.current = conversationId
+    prevLastMsgIdRef.current = lastMsg?.id || null
+  }, [messages, conversationId, isChatLoading])
 
   useEffect(() => {
     loadConversations()
@@ -311,8 +331,11 @@ export default function ChatPanel() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto bg-surface-subtle border border-gray-100 border-t-0 border-b-0 p-4 space-y-4 scrollbar-thin">
+          <AnimatePresence initial={false}>
+            {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+          </AnimatePresence>
           {isChatLoading && (
-            <div className="w-full max-w-md mx-auto h-1 bg-gray-200 overflow-hidden rounded-full mt-4">
+            <div className="w-full max-w-md mx-auto h-1 bg-gray-200 overflow-hidden rounded-full mb-4">
               <motion.div
                 className="h-full w-1/2 bg-brand-orange rounded-full"
                 animate={{ x: ['-100%', '200%'] }}
@@ -320,9 +343,6 @@ export default function ChatPanel() {
               />
             </div>
           )}
-          <AnimatePresence initial={false}>
-            {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
-          </AnimatePresence>
           <div ref={bottomRef} />
         </div>
 

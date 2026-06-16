@@ -1,7 +1,7 @@
 """
 Conversations router — CRUD for chat sessions.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from app.schemas.chat import ConversationResponse, ConversationDetailResponse, MessageResponse, ConversationRenameRequest
 from app.services.conversation_service import ConversationService
 from app.middleware.auth import get_current_user
@@ -36,11 +36,13 @@ async def list_conversations(
 async def get_conversation(
     request: Request,
     conversation_id: str,
+    limit: int = Query(None, description="Number of messages to return"),
+    offset: int = Query(None, description="Offset for pagination"),
     user: dict = Depends(get_current_user),
 ):
     """Get a conversation with all messages."""
     service = ConversationService()
-    result = service.get_conversation(conversation_id, user["user_id"])
+    result = service.get_conversation(conversation_id, user["user_id"], limit=limit, offset=offset)
 
     if not result:
         raise HTTPException(
