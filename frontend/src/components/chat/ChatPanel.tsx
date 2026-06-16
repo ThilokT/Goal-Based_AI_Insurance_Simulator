@@ -9,7 +9,7 @@ import type { Message } from '../../types'
 
 function TypingDots() {
   return (
-    <div className="flex items-center gap-1 px-4 py-3">
+    <div className="flex items-center gap-1 h-5">
       {[0, 1, 2].map(i => (
         <motion.div
           key={i}
@@ -29,24 +29,24 @@ function MessageBubble({ msg }: { msg: Message }) {
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
       className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
     >
-      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${
-        isUser ? 'gradient-orange' : 'gradient-navy'
-      }`}>
+      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${isUser ? 'gradient-orange' : 'gradient-navy'
+        }`}>
         {isUser ? <User size={14} className="text-white" /> : <Bot size={14} className="text-white" />}
       </div>
-      <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-        isUser
-          ? 'bg-brand-orange text-white rounded-tr-sm'
-          : 'bg-white border border-gray-100 text-gray-800 rounded-tl-sm shadow-card'
-      }`}>
+      <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
+        ? 'bg-brand-orange text-white rounded-tr-sm'
+        : 'bg-white border border-gray-100 text-gray-800 rounded-tl-sm shadow-card'
+        }`}>
         {isUser ? (
           <p>{msg.content}</p>
+        ) : msg.content === '' && msg.isStreaming ? (
+          <TypingDots />
         ) : (
           <div className="prose prose-sm max-w-none prose-headings:font-display prose-headings:text-brand-navy prose-strong:text-gray-900">
             <ReactMarkdown>{msg.content}</ReactMarkdown>
           </div>
         )}
-        {msg.isStreaming && <span className="inline-block w-1 h-4 bg-brand-orange/60 animate-pulse ml-0.5 align-middle" />}
+        {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-4 bg-brand-orange/60 animate-pulse ml-0.5 align-middle" />}
         <p className={`text-[10px] mt-1 ${isUser ? 'text-white/60' : 'text-gray-400'}`}>
           {new Date(msg.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </p>
@@ -59,7 +59,8 @@ export default function ChatPanel() {
   const {
     messages, addMessage, updateLastMessage, chatTurn, incrementChatTurn,
     profile, clearMessages, setActiveTab, conversationId, setConversationId, accessToken,
-    conversations, loadConversations, loadConversationDetails, createNewChat
+    conversations, loadConversations, loadConversationDetails, createNewChat,
+    isChatLoading
   } = useAppStore()
 
   const [input, setInput] = useState('')
@@ -81,7 +82,9 @@ export default function ChatPanel() {
 
   useEffect(() => {
     if (messages.length === 0 && !conversationId) {
-      triggerBotReply('', 0)
+      if (useAppStore.getState().messages.length === 0) {
+        triggerBotReply('', 0)
+      }
     }
   }, [conversationId, messages.length])
 
@@ -178,8 +181,8 @@ export default function ChatPanel() {
       {/* Sidebar for Chat History */}
       <div className="w-64 border-r border-gray-100 bg-surface-subtle flex flex-col hidden md:flex">
         <div className="p-4 border-b border-gray-100">
-          <button 
-            onClick={() => { createNewChat(); setTimeout(() => triggerBotReply('', 0), 100) }}
+          <button
+            onClick={() => { createNewChat() }}
             className="w-full btn-primary py-2.5 flex items-center justify-center gap-2"
           >
             <Plus size={16} /> New Chat
@@ -195,17 +198,16 @@ export default function ChatPanel() {
                 key={conv.id}
                 onMouseEnter={() => setHoveredChatId(conv.id)}
                 onMouseLeave={() => setHoveredChatId(null)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm flex items-center gap-3 transition-colors cursor-pointer ${
-                  conversationId === conv.id 
-                    ? 'bg-brand-orange/10 text-brand-orange font-medium' 
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm flex items-center gap-3 transition-colors cursor-pointer ${conversationId === conv.id
+                  ? 'bg-brand-orange/10 text-brand-orange font-medium'
+                  : 'text-gray-600 hover:bg-gray-100'
+                  }`}
               >
                 <MessageSquare size={16} className={`flex-shrink-0 ${conversationId === conv.id ? 'text-brand-orange' : 'text-gray-400'}`} />
-                
+
                 {editingChatId === conv.id ? (
                   <div className="flex-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <input 
+                    <input
                       autoFocus
                       value={editChatTitle}
                       onChange={e => setEditChatTitle(e.target.value)}
@@ -220,9 +222,9 @@ export default function ChatPanel() {
                       className="flex-1 min-w-0 bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800"
                     />
                     <button onClick={() => {
-                        useAppStore.getState().renameConversation(conv.id, editChatTitle)
-                        setEditingChatId(null)
-                      }} className="p-1 hover:bg-gray-200 rounded text-green-600">
+                      useAppStore.getState().renameConversation(conv.id, editChatTitle)
+                      setEditingChatId(null)
+                    }} className="p-1 hover:bg-gray-200 rounded text-green-600">
                       <Check size={14} />
                     </button>
                     <button onClick={() => setEditingChatId(null)} className="p-1 hover:bg-gray-200 rounded text-red-500">
@@ -231,7 +233,7 @@ export default function ChatPanel() {
                   </div>
                 ) : (
                   <div className="flex-1 flex justify-between items-center min-w-0">
-                    <button 
+                    <button
                       className="truncate text-left flex-1"
                       onClick={() => loadConversationDetails(conv.id)}
                     >
@@ -239,7 +241,7 @@ export default function ChatPanel() {
                     </button>
                     {(hoveredChatId === conv.id || conversationId === conv.id) && (
                       <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setEditChatTitle(conv.title || 'Conversation');
@@ -250,7 +252,7 @@ export default function ChatPanel() {
                         >
                           <Edit2 size={13} />
                         </button>
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             if (window.confirm('Are you sure you want to delete this chat?')) {
@@ -276,90 +278,89 @@ export default function ChatPanel() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <div className="border-b border-gray-100 flex items-center gap-3 py-4 px-4 bg-white">
-        <div className="w-9 h-9 gradient-navy rounded-xl flex items-center justify-center shadow-sm">
-          <Bot size={17} className="text-white" />
-        </div>
-        <div>
-          <p className="font-display font-semibold text-brand-navy text-sm">LifeMap AI Advisor</p>
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-[11px] text-gray-400">
-              Online · Powered by GenAI
-              {!useBackend && (
-                <span className="inline-flex items-center gap-1 ml-1 text-amber-500">
-                  <WifiOff size={9} /> demo mode
-                </span>
-              )}
+          <div className="w-9 h-9 gradient-navy rounded-xl flex items-center justify-center shadow-sm">
+            <Bot size={17} className="text-white" />
+          </div>
+          <div>
+            <p className="font-display font-semibold text-brand-navy text-sm">LifeMap AI Advisor</p>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[11px] text-gray-400">
+                Online · Powered by GenAI
+                {!useBackend && (
+                  <span className="inline-flex items-center gap-1 ml-1 text-amber-500">
+                    <WifiOff size={9} /> demo mode
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="badge-orange text-[10px]">
+              <Sparkles size={9} /> AI
             </span>
-          </div>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="badge-orange text-[10px]">
-            <Sparkles size={9} /> AI
-          </span>
-          <button
-            onClick={() => { clearMessages(); setUseBackend(true); setTimeout(() => triggerBotReply('', 0), 100) }}
-            className="btn-ghost text-xs py-1.5 px-2"
-            title="Restart conversation"
-          >
-            <RotateCcw size={13} /> Restart
-          </button>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-surface-subtle border border-gray-100 border-t-0 border-b-0 p-4 space-y-4 scrollbar-thin">
-        <AnimatePresence initial={false}>
-          {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
-        </AnimatePresence>
-        {isStreaming && messages[messages.length - 1]?.role === 'user' && (
-          <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-full gradient-navy flex items-center justify-center flex-shrink-0">
-              <Bot size={14} className="text-white" />
-            </div>
-            <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm shadow-card">
-              <TypingDots />
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Quick replies */}
-      <div className="card rounded-none border-x-0 border-b-0 border-t border-gray-100 bg-white">
-        <div className="flex gap-2 mb-3 flex-wrap">
-          {['Retirement at 55', 'Child abroad education', 'Aggressive ULIP', 'Safe guaranteed plan'].map(q => (
             <button
-              key={q}
-              onClick={() => setInput(q)}
-              className="text-[11px] px-3 py-1 rounded-full border border-brand-orange/30 text-brand-orange hover:bg-brand-orange hover:text-white transition-all"
+              onClick={() => { clearMessages(); setUseBackend(true); }}
+              className="btn-ghost text-xs py-1.5 px-2"
+              title="Restart conversation"
             >
-              {q}
+              <RotateCcw size={13} /> Restart
             </button>
-          ))}
+          </div>
         </div>
-        <form
-          onSubmit={e => { e.preventDefault(); handleSend() }}
-          className="flex gap-2"
-        >
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="Tell me about your life goals..."
-            className="input-base flex-1"
-            disabled={isStreaming}
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isStreaming}
-            className="btn-primary px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto bg-surface-subtle border border-gray-100 border-t-0 border-b-0 p-4 space-y-4 scrollbar-thin">
+          {isChatLoading && (
+            <div className="w-full max-w-md mx-auto h-1 bg-gray-200 overflow-hidden rounded-full mt-4">
+              <motion.div
+                className="h-full w-1/2 bg-brand-orange rounded-full"
+                animate={{ x: ['-100%', '200%'] }}
+                transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
+              />
+            </div>
+          )}
+          <AnimatePresence initial={false}>
+            {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+          </AnimatePresence>
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Quick replies */}
+        <div className="card rounded-none border-x-0 border-b-0 border-t border-gray-100 bg-white">
+          <div className="flex gap-2 mb-3 flex-wrap">
+            {['Retirement at 55', 'Child abroad education', 'Aggressive ULIP', 'Safe guaranteed plan'].map(q => (
+              <button
+                key={q}
+                onClick={() => setInput(q)}
+                className="text-[11px] px-3 py-1 rounded-full border border-brand-orange/30 text-brand-orange hover:bg-brand-orange hover:text-white transition-all"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+          <form
+            onSubmit={e => { e.preventDefault(); handleSend() }}
+            className="flex gap-2"
           >
-            {isStreaming ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          </button>
-        </form>
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Tell me about your life goals..."
+              className="input-base flex-1"
+              disabled={isStreaming}
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || isStreaming}
+              className="btn-primary px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isStreaming ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
     </div>
   )
 }

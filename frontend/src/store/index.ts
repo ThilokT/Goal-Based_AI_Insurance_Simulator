@@ -55,6 +55,9 @@ interface AppState {
   incrementChatTurn: () => void
   conversationId: string | null
   setConversationId: (id: string | null) => void
+  isChatLoading: boolean
+  setIsChatLoading: (b: boolean) => void
+  chatCache: Record<string, Message[]>
   conversations: ConversationResponse[]
   loadConversations: () => Promise<void>
   loadConversationDetails: (id: string) => Promise<void>
@@ -126,38 +129,57 @@ export const useAppStore = create<AppState>()(
               }
             }))
           }
-        } catch {
-          console.warn('Failed to load profile from API')
+        } catch (err) {
+          console.error('Failed to load profile from API', err)
         }
       },
       onboardingStep: 0,
       setOnboardingStep: (onboardingStep) => set({ onboardingStep }),
 
+      chatCache: {},
       messages: [],
-      addMessage: (m) => set(s => ({ messages: [...s.messages, m] })),
-      updateLastMessage: (content) =>
-        set(s => {
-          const msgs = [...s.messages]
-          if (msgs.length) msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content, isStreaming: false }
-          return { messages: msgs }
-        }),
+      addMessage: (m) => set(s => {
+        const newMessages = [...s.messages, m];
+        const cacheUpdate = s.conversationId ? { chatCache: { ...s.chatCache, [s.conversationId]: newMessages } } : {};
+        return { messages: newMessages, ...cacheUpdate };
+      }),
+      updateLastMessage: (content) => set(s => {
+        const newMessages = [...s.messages]
+        if (newMessages.length > 0) {
+          newMessages[newMessages.length - 1] = { ...newMessages[newMessages.length - 1], content, isStreaming: false }
+        }
+        const cacheUpdate = s.conversationId ? { chatCache: { ...s.chatCache, [s.conversationId]: newMessages } } : {};
+        return { messages: newMessages, ...cacheUpdate };
+      }),
       clearMessages: () => set({ messages: [], chatTurn: 0, conversationId: null }),
       chatTurn: 0,
       incrementChatTurn: () => set(s => ({ chatTurn: s.chatTurn + 1 })),
       conversationId: null,
       setConversationId: (conversationId) => set({ conversationId }),
+      isChatLoading: false,
+      setIsChatLoading: (isChatLoading) => set({ isChatLoading }),
 
       conversations: [],
       loadConversations: async () => {
         try {
           const res = await api.get<ConversationResponse[]>('/api/conversations')
           set({ conversations: res || [] })
-        } catch {
-          console.warn('Failed to load conversations')
+        } catch (err) {
+          console.error('Failed to load conversations', err)
         }
       },
 
       loadConversationDetails: async (id: string) => {
+        const state = get()
+        const cachedMessages = state.chatCache[id]
+        
+        // Provide instant UI feedback by switching the active chat immediately
+        set({
+          conversationId: id,
+          messages: cachedMessages || [],
+          chatTurn: cachedMessages ? Math.floor(cachedMessages.length / 2) : 0,
+          isChatLoading: !cachedMessages
+        })
         try {
           const res = await api.get<ConversationDetailResponse>(`/api/conversations/${id}`)
           const mappedMessages: Message[] = res.messages.map(m => ({
@@ -167,13 +189,35 @@ export const useAppStore = create<AppState>()(
             timestamp: new Date(m.created_at || Date.now()),
             isStreaming: false
           }))
-          set({
-            conversationId: id,
-            messages: mappedMessages,
-            chatTurn: Math.floor(mappedMessages.length / 2)
-          })
-        } catch {
-          console.warn('Failed to load conversation details')
+          
+          if (!cachedMessages) {
+            // Progressive loading effect for better UX
+            for (let i = 0; i < mappedMessages.length; i++) {
+              await new Promise(r => setTimeout(r, 80)) // Stagger delay
+              // Check if the user hasn't switched to another conversation during the delay
+              if (get().conversationId !== id) return;
+              
+              set(s => ({
+                messages: mappedMessages.slice(0, i + 1),
+                chatTurn: Math.floor((i + 1) / 2)
+              }))
+            }
+            set((state) => ({
+              isChatLoading: false,
+              chatCache: { ...state.chatCache, [id]: mappedMessages }
+            }))
+          } else {
+            // Silent background update if already cached
+            set((state) => ({
+              messages: mappedMessages,
+              chatTurn: Math.floor(mappedMessages.length / 2),
+              isChatLoading: false,
+              chatCache: { ...state.chatCache, [id]: mappedMessages }
+            }))
+          }
+        } catch (err) {
+          console.error('Failed to load conversation details', err)
+          set({ isChatLoading: false })
         }
       },
 
@@ -231,8 +275,8 @@ export const useAppStore = create<AppState>()(
         try {
           await api.post('/api/goals', goal)
           await get().loadGoals()
-        } catch {
-          console.warn('Failed to create goal via API')
+        } catch (err) {
+          console.error('Failed to create goal via API', err)
         }
       },
 
