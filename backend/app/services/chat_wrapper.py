@@ -42,11 +42,20 @@ async def stream_chat_response(
         full_response = ""
         stream = chat.send_message_stream(user_id, message, user_profile=user_profile)
 
+        import re
+        import asyncio
+
         for chunk in stream:
             if not chunk:
                 continue
             full_response += chunk
-            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+            
+            # Split chunk into tokens (keeping spaces) to simulate smooth token streaming
+            tokens = re.split(r'(\s+)', chunk)
+            for token in tokens:
+                if token:
+                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                    await asyncio.sleep(0.02)
 
         if not full_response:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Empty response from AI'})}\n\n"

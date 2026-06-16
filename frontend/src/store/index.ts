@@ -59,6 +59,8 @@ interface AppState {
   loadConversations: () => Promise<void>
   loadConversationDetails: (id: string) => Promise<void>
   createNewChat: () => void
+  deleteConversation: (id: string) => Promise<void>
+  renameConversation: (id: string, title: string) => Promise<void>
 
   // Simulation
   goals: LifeGoal[]
@@ -144,7 +146,7 @@ export const useAppStore = create<AppState>()(
       incrementChatTurn: () => set(s => ({ chatTurn: s.chatTurn + 1 })),
       conversationId: null,
       setConversationId: (conversationId) => set({ conversationId }),
-      
+
       conversations: [],
       loadConversations: async () => {
         try {
@@ -154,7 +156,7 @@ export const useAppStore = create<AppState>()(
           console.warn('Failed to load conversations')
         }
       },
-      
+
       loadConversationDetails: async (id: string) => {
         try {
           const res = await api.get<ConversationDetailResponse>(`/api/conversations/${id}`)
@@ -165,7 +167,7 @@ export const useAppStore = create<AppState>()(
             timestamp: new Date(m.created_at || Date.now()),
             isStreaming: false
           }))
-          set({ 
+          set({
             conversationId: id,
             messages: mappedMessages,
             chatTurn: Math.floor(mappedMessages.length / 2)
@@ -174,13 +176,33 @@ export const useAppStore = create<AppState>()(
           console.warn('Failed to load conversation details')
         }
       },
-      
+
       createNewChat: () => {
         set({
           conversationId: null,
           messages: [],
           chatTurn: 0
         })
+      },
+
+      deleteConversation: async (id: string) => {
+        try {
+          await api.delete(`/api/conversations/${id}`)
+          if (get().conversationId === id) {
+            set({ conversationId: null, messages: [], chatTurn: 0 })
+          }
+          await get().loadConversations()
+        } catch {
+          console.warn('Failed to delete conversation')
+        }
+      },
+      renameConversation: async (id: string, title: string) => {
+        try {
+          await api.patch(`/api/conversations/${id}`, { title })
+          await get().loadConversations()
+        } catch {
+          console.warn('Failed to rename conversation')
+        }
       },
 
       goals: [],

@@ -8,6 +8,10 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="Existing conversation ID to continue")
 
 
+class ConversationRenameRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+
+
 class ChatResponse(BaseModel):
     response: str
     conversation_id: str

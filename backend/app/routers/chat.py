@@ -42,8 +42,17 @@ async def chat(
     # Get or create conversation
     conversation_id = body.conversation_id
     if not conversation_id:
-        conv = conv_service.create_conversation(user_id)
+        title = "New Conversation"
+        if body.message and body.message != 'Hello, I want to plan my financial future.':
+            title = body.message[:40] + ("..." if len(body.message) > 40 else "")
+        conv = conv_service.create_conversation(user_id, title=title)
         conversation_id = conv["id"]
+    else:
+        if body.message and body.message != 'Hello, I want to plan my financial future.':
+            conv_details = conv_service.get_conversation(conversation_id, user_id)
+            if conv_details and conv_details["conversation"].get("title") == "New Conversation":
+                new_title = body.message[:40] + ("..." if len(body.message) > 40 else "")
+                conv_service.update_title(conversation_id, new_title)
 
     # Save user message to DB
     conv_service.add_message(conversation_id, user_id, "user", body.message)
@@ -105,8 +114,17 @@ async def chat_sync(
     # Get or create conversation
     conversation_id = body.conversation_id
     if not conversation_id:
-        conv = conv_service.create_conversation(user_id)
+        title = "New Conversation"
+        if body.message and body.message != 'Hello, I want to plan my financial future.':
+            title = body.message[:40] + ("..." if len(body.message) > 40 else "")
+        conv = conv_service.create_conversation(user_id, title=title)
         conversation_id = conv["id"]
+    else:
+        if body.message and body.message != 'Hello, I want to plan my financial future.':
+            conv_details = conv_service.get_conversation(conversation_id, user_id)
+            if conv_details and conv_details["conversation"].get("title") == "New Conversation":
+                new_title = body.message[:40] + ("..." if len(body.message) > 40 else "")
+                conv_service.update_title(conversation_id, new_title)
 
     # Save user message
     conv_service.add_message(conversation_id, user_id, "user", body.message)

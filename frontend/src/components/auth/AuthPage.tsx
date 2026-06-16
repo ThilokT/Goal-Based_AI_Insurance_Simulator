@@ -9,9 +9,9 @@ import { mapTokenResponseToAuthUser } from '../../types/api'
 type Mode = 'login' | 'signup' | 'forgot'
 
 const FEATURES = [
-  { icon: Target,     text: 'Goal-based financial planning personalised to your life' },
+  { icon: Target, text: 'Goal-based financial planning personalised to your life' },
   { icon: TrendingUp, text: 'AI-powered product matching across 5 insurance categories' },
-  { icon: Shield,     text: 'IRDAI-regulated products from ICICI Prudential' },
+  { icon: Shield, text: 'IRDAI-regulated products from ICICI Prudential' },
 ]
 
 export default function AuthPage() {
@@ -142,8 +142,8 @@ export default function AuthPage() {
               </h2>
               <p className="text-sm text-gray-500 mt-1">
                 {mode === 'login' ? 'Sign in to your LifeMap account' :
-                 mode === 'signup' ? 'Start your financial planning journey' :
-                 'We will send a reset link to your email'}
+                  mode === 'signup' ? 'Start your financial planning journey' :
+                    'We will send a reset link to your email'}
               </p>
             </div>
 

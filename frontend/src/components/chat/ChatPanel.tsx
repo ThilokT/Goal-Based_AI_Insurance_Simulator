@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, Bot, User, Sparkles, RotateCcw, WifiOff, MessageSquare, Plus } from 'lucide-react'
+import { Send, Loader2, Bot, User, Sparkles, RotateCcw, WifiOff, MessageSquare, Plus, Edit2, Trash2, Check, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../../store'
 import { streamChat, ApiError } from '../../lib/apiClient'
@@ -65,6 +65,9 @@ export default function ChatPanel() {
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [useBackend, setUseBackend] = useState(true)
+  const [editingChatId, setEditingChatId] = useState<string | null>(null)
+  const [editChatTitle, setEditChatTitle] = useState('')
+  const [hoveredChatId, setHoveredChatId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -83,6 +86,18 @@ export default function ChatPanel() {
   }, [conversationId, messages.length])
 
   async function triggerBotReply(userMsg: string, turn: number) {
+    if (!userMsg) {
+      const greetingMsg: Message = {
+        id: `bot-${Date.now()}`,
+        role: 'assistant',
+        content: "I'm here to help with your financial planning. What would you like to discuss?",
+        timestamp: new Date(),
+        isStreaming: false,
+      }
+      addMessage(greetingMsg)
+      return
+    }
+
     setIsStreaming(true)
     const botMsg: Message = {
       id: `bot-${Date.now()}`,
@@ -95,12 +110,9 @@ export default function ChatPanel() {
 
     let accumulated = ''
 
-    // Try backend SSE first, fall back to mock if unavailable
-    // For initial greeting (empty userMsg), send a greeting trigger to the AI
-    const messageToSend = userMsg || 'Hello, I want to plan my financial future.'
     if (useBackend && accessToken) {
       try {
-        for await (const event of streamChat(messageToSend, conversationId)) {
+        for await (const event of streamChat(userMsg, conversationId)) {
           if (event.type === 'error') {
             throw new ApiError(0, event.data)
           }
@@ -110,25 +122,16 @@ export default function ChatPanel() {
             }
             break
           }
-          // token event — add space separator between chunks
-          if (accumulated && event.data && !accumulated.endsWith(' ') && !event.data.startsWith(' ')) {
-            accumulated += ' '
-          }
+          // token event
           accumulated += event.data
           updateLastMessage(accumulated)
           if (event.conversationId && !conversationId) {
             setConversationId(event.conversationId)
           }
         }
-        // If we got no content from SSE, the stream was empty — finalize
-        if (!accumulated) {
-          accumulated = "I'm here to help with your financial planning. What would you like to discuss?"
-          updateLastMessage(accumulated)
-        }
       } catch (err: unknown) {
         // Backend unavailable — fall through to mock for THIS request only
         console.warn('Chat SSE failed, falling back to mock:', err instanceof ApiError ? err.detail : err)
-        // Don't permanently disable backend — only fallback for this message
         accumulated = ''
       }
     }
@@ -167,6 +170,7 @@ export default function ChatPanel() {
     incrementChatTurn()
     setInput('')
     await triggerBotReply(input.trim(), currentTurn + 1)
+    loadConversations() // refresh sidebar to show updated title
   }
 
   return (
@@ -187,18 +191,82 @@ export default function ChatPanel() {
             <p className="text-xs text-gray-400 px-3">No past chats</p>
           ) : (
             conversations.map(conv => (
-              <button
+              <div
                 key={conv.id}
-                onClick={() => loadConversationDetails(conv.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm flex items-center gap-3 transition-colors ${
+                onMouseEnter={() => setHoveredChatId(conv.id)}
+                onMouseLeave={() => setHoveredChatId(null)}
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm flex items-center gap-3 transition-colors cursor-pointer ${
                   conversationId === conv.id 
                     ? 'bg-brand-orange/10 text-brand-orange font-medium' 
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                <MessageSquare size={16} className={conversationId === conv.id ? 'text-brand-orange' : 'text-gray-400'} />
-                <span className="truncate">{conv.title || 'Conversation'}</span>
-              </button>
+                <MessageSquare size={16} className={`flex-shrink-0 ${conversationId === conv.id ? 'text-brand-orange' : 'text-gray-400'}`} />
+                
+                {editingChatId === conv.id ? (
+                  <div className="flex-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <input 
+                      autoFocus
+                      value={editChatTitle}
+                      onChange={e => setEditChatTitle(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          useAppStore.getState().renameConversation(conv.id, editChatTitle)
+                          setEditingChatId(null)
+                        } else if (e.key === 'Escape') {
+                          setEditingChatId(null)
+                        }
+                      }}
+                      className="flex-1 min-w-0 bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800"
+                    />
+                    <button onClick={() => {
+                        useAppStore.getState().renameConversation(conv.id, editChatTitle)
+                        setEditingChatId(null)
+                      }} className="p-1 hover:bg-gray-200 rounded text-green-600">
+                      <Check size={14} />
+                    </button>
+                    <button onClick={() => setEditingChatId(null)} className="p-1 hover:bg-gray-200 rounded text-red-500">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex justify-between items-center min-w-0">
+                    <button 
+                      className="truncate text-left flex-1"
+                      onClick={() => loadConversationDetails(conv.id)}
+                    >
+                      {conv.title || 'Conversation'}
+                    </button>
+                    {(hoveredChatId === conv.id || conversationId === conv.id) && (
+                      <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditChatTitle(conv.title || 'Conversation');
+                            setEditingChatId(conv.id);
+                          }}
+                          className="p-1 text-gray-400 hover:text-brand-orange hover:bg-white rounded transition-colors"
+                          title="Rename"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm('Are you sure you want to delete this chat?')) {
+                              useAppStore.getState().deleteConversation(conv.id);
+                            }
+                          }}
+                          className="p-1 text-gray-400 hover:text-red-500 hover:bg-white rounded transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>

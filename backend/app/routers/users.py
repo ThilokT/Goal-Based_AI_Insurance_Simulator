@@ -25,7 +25,6 @@ async def get_my_profile(request: Request, user: dict = Depends(get_current_user
         client.table("profiles")
         .select("*")
         .eq("id", user["user_id"])
-        .single()
         .execute()
     )
 
@@ -35,7 +34,7 @@ async def get_my_profile(request: Request, user: dict = Depends(get_current_user
             detail="Profile not found",
         )
 
-    return UserProfileResponse(id=user["user_id"], **response.data)
+    return UserProfileResponse(id=user["user_id"], **response.data[0])
 
 
 @router.put(

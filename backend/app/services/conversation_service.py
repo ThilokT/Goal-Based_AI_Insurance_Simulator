@@ -98,6 +98,12 @@ class ConversationService:
             {"extracted_context": context}
         ).eq("id", conversation_id).execute()
 
+    def update_title(self, conversation_id: str, title: str) -> None:
+        """Update the conversation title."""
+        self.client.table("conversations").update(
+            {"title": title}
+        ).eq("id", conversation_id).execute()
+
     def delete_conversation(self, conversation_id: str, user_id: str) -> bool:
         """Soft-delete a conversation."""
         response = (

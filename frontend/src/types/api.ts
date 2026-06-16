@@ -273,6 +273,10 @@ export interface ConversationResponse {
   updated_at?: string | null
 }
 
+export interface ConversationRenameRequest {
+  title: string
+}
+
 export interface MessageResponse {
   id: string
   role: string

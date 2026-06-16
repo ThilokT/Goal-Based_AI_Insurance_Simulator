@@ -16,13 +16,13 @@ import LandingPage from './components/landing/LandingPage'
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
-  chat:      'AI Advisor',
-  onboard:   'Profile Setup',
-  products:  'Products',
-  timeline:  'Life Journey',
-  simulate:  'What-If Simulator',
-  compare:   'Compare Products',
-  report:    'My Report',
+  chat: 'AI Advisor',
+  onboard: 'Profile Setup',
+  products: 'Products',
+  timeline: 'Life Journey',
+  simulate: 'What-If Simulator',
+  compare: 'Compare Products',
+  report: 'My Report',
 }
 
 function AppContent() {
@@ -37,13 +37,13 @@ function AppContent() {
         transition={{ duration: 0.2 }}
       >
         {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'chat'      && <ChatPanel />}
-        {activeTab === 'onboard'   && <OnboardingFlow />}
-        {activeTab === 'products'  && <ProductsPage />}
-        {activeTab === 'timeline'  && <LifeJourneyTimeline />}
-        {activeTab === 'simulate'  && <WhatIfPanel />}
-        {activeTab === 'compare'   && <ScenarioComparison />}
-        {activeTab === 'report'    && (
+        {activeTab === 'chat' && <ChatPanel />}
+        {activeTab === 'onboard' && <OnboardingFlow />}
+        {activeTab === 'products' && <ProductsPage />}
+        {activeTab === 'timeline' && <LifeJourneyTimeline />}
+        {activeTab === 'simulate' && <WhatIfPanel />}
+        {activeTab === 'compare' && <ScenarioComparison />}
+        {activeTab === 'report' && (
           <div className="card text-center py-20">
             <p className="text-gray-400 text-sm">PDF report generation will be wired to the backend API in Phase 4.</p>
           </div>
