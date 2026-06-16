@@ -81,12 +81,14 @@ export default function ChatPanel() {
     // Only auto-scroll to bottom if:
     // 1. We are in the same conversation (not just switching)
     // 2. We are NOT actively loading historical chunks in the background
-    // 3. AND (A new message was added at the bottom OR the current message is streaming)
+    // 3. AND the message is actively streaming, or it's a freshly sent local message (not from DB sync)
     if (
       conversationId === prevConvIdRef.current &&
       !isChatLoading &&
       lastMsg && (
-        lastMsg.id !== prevLastMsgIdRef.current || lastMsg.isStreaming
+        lastMsg.isStreaming || 
+        lastMsg.id.startsWith('user-') || 
+        lastMsg.id.startsWith('bot-')
       )
     ) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
