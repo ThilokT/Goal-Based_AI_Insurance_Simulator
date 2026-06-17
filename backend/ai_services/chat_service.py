@@ -60,7 +60,8 @@ AI-powered financial insurance advisor working for a goal-based insurance planni
 - Include relevant emojis sparingly for warmth (💡, ✅, 📊)
 
 ## Important Rules
-- NEVER recommend specific product names or policy numbers
+- Unless you have specific product context, NEVER recommend specific product names or policy numbers.
+- If you are provided with PRODUCT CONTEXT, you MAY use it to explain and answer specific questions about those exact plans. Do not make up plans that are not in the context.
 - NEVER guarantee returns or specific amounts
 - ALWAYS include a brief disclaimer when discussing projections
 - If the user asks about something outside insurance/financial planning, politely redirect
@@ -199,7 +200,7 @@ class ChatService:
 
     # ── Gemini Chat ───────────────────────────────────────
 
-    def _send_gemini(self, user_id: str, message: str, user_profile: dict = None) -> str:
+    def _send_gemini(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None) -> str:
         """Send message via Gemini and return the response text."""
         history = self.get_history(user_id)
 
@@ -214,11 +215,16 @@ class ChatService:
             gemini_history.insert(0, {"role": "user", "parts": [profile_context]})
             gemini_history.insert(1, {"role": "model", "parts": ["Understood. I will use this profile context for our conversation."]})
 
+        if product_context:
+            context_str = f"PRODUCT CONTEXT from database:\n{product_context}\n\nPlease use this information to answer the user's latest question if relevant."
+            gemini_history.append({"role": "user", "parts": [context_str]})
+            gemini_history.append({"role": "model", "parts": ["Understood. I will use this product context."]})
+
         chat = self._gemini_model.start_chat(history=gemini_history)
         response = chat.send_message(message)
         return response.text
 
-    def _send_gemini_stream(self, user_id: str, message: str, user_profile: dict = None):
+    def _send_gemini_stream(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None):
         """Send message via Gemini and yield the response chunks."""
         history = self.get_history(user_id)
 
@@ -233,6 +239,11 @@ class ChatService:
             gemini_history.insert(0, {"role": "user", "parts": [profile_context]})
             gemini_history.insert(1, {"role": "model", "parts": ["Understood. I will use this profile context for our conversation."]})
 
+        if product_context:
+            context_str = f"PRODUCT CONTEXT from database:\n{product_context}\n\nPlease use this information to answer the user's latest question if relevant."
+            gemini_history.append({"role": "user", "parts": [context_str]})
+            gemini_history.append({"role": "model", "parts": ["Understood. I will use this product context."]})
+
         chat = self._gemini_model.start_chat(history=gemini_history)
         response = chat.send_message(message, stream=True)
         for chunk in response:
@@ -240,7 +251,7 @@ class ChatService:
 
     # ── Groq Fallback Chat ────────────────────────────────
 
-    def _send_groq(self, user_id: str, message: str, user_profile: dict = None) -> str:
+    def _send_groq(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None) -> str:
         """Send message via Groq (Llama) fallback."""
         client = self._get_groq_client()
         if client is None:
@@ -251,6 +262,8 @@ class ChatService:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         if user_profile:
             messages[0]["content"] += f"\n\nUSER PROFILE CONTEXT:\n{json.dumps(user_profile)}"
+        if product_context:
+            messages[0]["content"] += f"\n\nPRODUCT CONTEXT (Use this to answer the user):\n{product_context}"
 
         for msg in history:
             messages.append({"role": msg["role"], "content": msg["content"]})
@@ -264,7 +277,7 @@ class ChatService:
         )
         return response.choices[0].message.content
 
-    def _send_groq_stream(self, user_id: str, message: str, user_profile: dict = None):
+    def _send_groq_stream(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None):
         """Send message via Groq fallback and yield chunks."""
         client = self._get_groq_client()
         if client is None:
@@ -275,6 +288,8 @@ class ChatService:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         if user_profile:
             messages[0]["content"] += f"\n\nUSER PROFILE CONTEXT:\n{json.dumps(user_profile)}"
+        if product_context:
+            messages[0]["content"] += f"\n\nPRODUCT CONTEXT (Use this to answer the user):\n{product_context}"
 
         for msg in history:
             messages.append({"role": msg["role"], "content": msg["content"]})
@@ -293,7 +308,7 @@ class ChatService:
 
     # ── Main Send Method ──────────────────────────────────
 
-    def send_message(self, user_id: str, message: str, user_profile: dict = None) -> dict:
+    def send_message(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None) -> dict:
         """
         Send a user message and get an AI response.
 
@@ -310,11 +325,11 @@ class ChatService:
 
         try:
             if self._should_use_fallback():
-                response_text = self._send_groq(user_id, message, user_profile=user_profile)
+                response_text = self._send_groq(user_id, message, user_profile=user_profile, product_context=product_context)
                 provider = "groq"
             else:
                 try:
-                    response_text = self._send_gemini(user_id, message, user_profile=user_profile)
+                    response_text = self._send_gemini(user_id, message, user_profile=user_profile, product_context=product_context)
                 except Exception as e:
                     error_str = str(e).lower()
                     if "rate" in error_str or "429" in error_str or "quota" in error_str:
@@ -323,7 +338,7 @@ class ChatService:
                         )
                         self._use_fallback = True
                         self._last_gemini_failure = time.time()
-                        response_text = self._send_groq(user_id, message, user_profile=user_profile)
+                        response_text = self._send_groq(user_id, message, user_profile=user_profile, product_context=product_context)
                         provider = "groq"
                     else:
                         raise
@@ -348,7 +363,7 @@ class ChatService:
             "history_length": len(history),
         }
 
-    def send_message_stream(self, user_id: str, message: str, user_profile: dict = None):
+    def send_message_stream(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None):
         """
         Send a user message and yield chunks as they arrive.
         Tries Gemini first, falls back to Groq on rate-limit or failure.
@@ -358,11 +373,11 @@ class ChatService:
 
         try:
             if self._should_use_fallback():
-                stream = self._send_groq_stream(user_id, message, user_profile=user_profile)
+                stream = self._send_groq_stream(user_id, message, user_profile=user_profile, product_context=product_context)
                 provider = "groq"
             else:
                 try:
-                    stream = self._send_gemini_stream(user_id, message, user_profile=user_profile)
+                    stream = self._send_gemini_stream(user_id, message, user_profile=user_profile, product_context=product_context)
                     first_chunk = next(stream)
                     full_response += first_chunk
                     yield first_chunk
@@ -376,7 +391,7 @@ class ChatService:
                         )
                         self._use_fallback = True
                         self._last_gemini_failure = time.time()
-                        stream = self._send_groq_stream(user_id, message, user_profile=user_profile)
+                        stream = self._send_groq_stream(user_id, message, user_profile=user_profile, product_context=product_context)
                         provider = "groq"
                     else:
                         raise

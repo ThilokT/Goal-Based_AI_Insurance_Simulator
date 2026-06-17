@@ -13,13 +13,12 @@ from pathlib import Path
 from typing import Optional
 
 import chromadb
-import google.generativeai as genai
+from langchain_huggingface import HuggingFaceEmbeddings
 from rich.console import Console
 
 from ai_services.config import (
     CHROMA_COLLECTION_NAME,
     CHROMA_PERSIST_DIR,
-    EMBEDDING_MODEL,
 )
 from ai_services.models import ScrapedProduct, ProductMatch
 
@@ -59,6 +58,10 @@ class ProductVectorStore:
             name=collection_name,
             metadata={"hnsw:space": "cosine"},  # cosine similarity
         )
+        
+        console.print("[dim]⏳ Loading local embedding model (all-MiniLM-L6-v2)...[/dim]")
+        self.embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        
         console.print(
             f"[green]✅ ChromaDB collection '{collection_name}' ready "
             f"({self.collection.count()} documents)[/green]"
@@ -68,37 +71,20 @@ class ProductVectorStore:
 
     def _generate_embedding(self, text: str) -> list[float]:
         """
-        Generate an embedding vector for a text string using Gemini.
-
-        Args:
-            text: The text to embed.
-
-        Returns:
-            A list of floats representing the embedding vector.
+        Generate an embedding vector for a text string.
         """
-        result = genai.embed_content(
-            model=EMBEDDING_MODEL,
-            content=text,
-            task_type="RETRIEVAL_DOCUMENT",
-        )
-        return result["embedding"]
+        return self.embeddings_model.embed_documents([text])[0]
 
     def _generate_query_embedding(self, query: str) -> list[float]:
         """
         Generate an embedding optimised for retrieval queries.
-
-        Args:
-            query: The search query.
-
-        Returns:
-            A list of floats representing the query embedding.
         """
-        result = genai.embed_content(
-            model=EMBEDDING_MODEL,
-            content=query,
-            task_type="RETRIEVAL_QUERY",
-        )
-        return result["embedding"]
+        return self.embeddings_model.embed_query(query)
+
+    def _generate_embeddings_batch(self, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings for a batch of strings locally."""
+        # No sleep needed for local model!
+        return self.embeddings_model.embed_documents(texts)
 
     def _product_to_text(self, product: dict) -> str:
         """
@@ -168,34 +154,42 @@ class ProductVectorStore:
             )
 
             # Skip if already indexed
-            existing = self.collection.get(ids=[product_id])
+            existing = self.collection.get(where={"product_id": product_id})
             if existing and existing["ids"]:
                 console.print(f"  [dim]⏭️  Skipping '{product.get('product_name', product.get('name', ''))}' (already indexed)[/dim]")
                 continue
 
-            text = self._product_to_text(product)
+            # Fallback to _product_to_text if raw_chunks is missing (e.g. seed data)
+            raw_chunks = product.get("raw_chunks", [])
+            if not raw_chunks:
+                raw_chunks = [self._product_to_text(product)]
 
-            try:
-                embedding = self._generate_embedding(text)
-            except Exception as e:
-                console.print(f"  [red]❌ Embedding failed for product {product_id}: {e}[/red]")
-                continue
-
-            ids.append(product_id)
-            documents.append(text)
-            embeddings.append(embedding)
-            metadatas.append({
-                "product_name": product.get("product_name", product.get("name", "Unknown")),
-                "category": product.get("category", "other"),
-                "description": product.get("description", "")[:500],
-                "goals_supported": json.dumps(product.get("goals_supported", [])),
-                "key_benefits": json.dumps(
-                    product.get("key_benefits", [b.get("feature_value", "") for b in product.get("features", []) if isinstance(b, dict)])
-                ),
-            })
+            batch_size = 50
+            for i in range(0, len(raw_chunks), batch_size):
+                batch_texts = raw_chunks[i:i + batch_size]
+                try:
+                    batch_embeddings = self._generate_embeddings_batch(batch_texts)
+                    for j, embedding in enumerate(batch_embeddings):
+                        chunk_idx = i + j
+                        chunk_id = f"{product_id}_chunk_{chunk_idx}"
+                        ids.append(chunk_id)
+                        documents.append(batch_texts[j])
+                        embeddings.append(embedding)
+                        metadatas.append({
+                            "product_id": product_id,
+                            "product_name": product.get("product_name", product.get("name", "Unknown")),
+                            "category": product.get("category", "other"),
+                            "description": product.get("description", "")[:500],
+                            "goals_supported": json.dumps(product.get("goals_supported", [])),
+                            "key_benefits": json.dumps(
+                                product.get("key_benefits", [b.get("feature_value", "") for b in product.get("features", []) if isinstance(b, dict)])
+                            ),
+                        })
+                except Exception as e:
+                    console.print(f"  [red]❌ Embedding failed for product {product_id} batch {i}: {e}[/red]")
 
             console.print(
-                f"  [green]✅ Embedded: {product.get('product_name', product.get('name', ''))}[/green]"
+                f"  [green]✅ Embedded: {product.get('product_name', product.get('name', ''))} ({len(raw_chunks)} chunks)[/green]"
             )
 
         if ids:
@@ -217,7 +211,7 @@ class ProductVectorStore:
     def search_products(
         self,
         query: str,
-        n_results: int = 5,
+        n_results: int = 15,
         category_filter: Optional[str] = None,
     ) -> list[ProductMatch]:
         """
@@ -266,7 +260,7 @@ class ProductVectorStore:
 
                 matches.append(ProductMatch(
                     product_name=metadata.get("product_name", "Unknown"),
-                    product_id=product_id,
+                    product_id=metadata.get("product_id", product_id),
                     category=metadata.get("category", "other"),
                     similarity_score=round(similarity, 4),
                     matched_goals=goals,

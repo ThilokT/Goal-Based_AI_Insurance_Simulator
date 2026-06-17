@@ -8,6 +8,7 @@ import logging
 import json
 from typing import AsyncGenerator
 from ai_services.chat_service import ChatService
+from ai_services.vectorstore import ProductVectorStore
 
 logger = logging.getLogger("lifemap.chat")
 
@@ -37,10 +38,24 @@ async def stream_chat_response(
         - data: {"type": "error", "message": "..."} — on failure
     """
     chat = get_chat_service()
+    
+    # RAG: Fetch relevant product context based on user's message
+    try:
+        vectorstore = ProductVectorStore()
+        results = vectorstore.search_products(message, n_results=3)
+        product_context = ""
+        if results:
+            context_parts = []
+            for r in results:
+                context_parts.append(f"Product: {r.product_name} ({r.category})\nDetails: {r.chunk_text}")
+            product_context = "\n\n".join(context_parts)
+    except Exception as e:
+        logger.warning(f"Failed to fetch product context: {e}")
+        product_context = None
 
     try:
         full_response = ""
-        stream = chat.send_message_stream(user_id, message, user_profile=user_profile)
+        stream = chat.send_message_stream(user_id, message, user_profile=user_profile, product_context=product_context)
 
         import re
         import asyncio

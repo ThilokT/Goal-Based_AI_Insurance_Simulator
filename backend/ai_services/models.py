@@ -42,6 +42,7 @@ class ScrapedProduct(BaseModel):
     source_url: str
     last_scraped: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = True
+    raw_chunks: list[str] = Field(default_factory=list, description="Raw text chunks from the full PDF for semantic RAG")
 
     class Config:
         json_schema_extra = {

@@ -107,6 +107,7 @@ async def chat_sync(
 ):
     """Non-streaming chat endpoint for clients that don't support SSE."""
     from app.services.chat_wrapper import get_chat_service
+    from ai_services.vectorstore import ProductVectorStore
 
     conv_service = ConversationService()
     user_id = user["user_id"]
@@ -129,9 +130,22 @@ async def chat_sync(
     # Save user message
     conv_service.add_message(conversation_id, user_id, "user", body.message)
 
+    # RAG: Fetch relevant product context based on user's message
+    try:
+        vectorstore = ProductVectorStore()
+        results = vectorstore.search_products(body.message, n_results=3)
+        product_context = ""
+        if results:
+            context_parts = []
+            for r in results:
+                context_parts.append(f"Product: {r.product_name} ({r.category})\nDetails: {r.chunk_text}")
+            product_context = "\n\n".join(context_parts)
+    except Exception:
+        product_context = None
+
     # Get response
     chat = get_chat_service()
-    response = chat.send_message(user_id, body.message)
+    response = chat.send_message(user_id, body.message, product_context=product_context)
 
     # Save assistant response
     conv_service.add_message(conversation_id, user_id, "assistant", response)
