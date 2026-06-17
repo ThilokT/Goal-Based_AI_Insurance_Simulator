@@ -20,7 +20,6 @@ const PAGE_TITLES: Record<string, string> = {
   onboard: 'Profile Setup',
   products: 'Products',
   timeline: 'Life Journey',
-  simulate: 'What-If Simulator',
   compare: 'Compare Products',
   report: 'My Report',
 }
@@ -41,7 +40,6 @@ function AppContent() {
         {activeTab === 'onboard' && <OnboardingFlow />}
         {activeTab === 'products' && <ProductsPage />}
         {activeTab === 'timeline' && <LifeJourneyTimeline />}
-        {activeTab === 'simulate' && <WhatIfPanel />}
         {activeTab === 'compare' && <ScenarioComparison />}
         {activeTab === 'report' && (
           <div className="card text-center py-20">

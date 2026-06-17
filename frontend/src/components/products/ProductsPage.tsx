@@ -24,7 +24,7 @@ export default function ProductsPage() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState<ProductCategory | 'all'>('all')
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS)
+  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [usingFallback, setUsingFallback] = useState(false)
   const [simulatingProduct, setSimulatingProduct] = useState<Product | null>(null)
@@ -75,7 +75,7 @@ export default function ProductsPage() {
       <div>
         <h1 className="text-2xl font-display font-bold text-gray-900">ICICI Prudential Products</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Explore {products.length} products across 5 categories
+          Explore {loading ? '...' : products.length} products across 5 categories
           {usingFallback && (
             <span className="inline-flex items-center gap-1 ml-2 text-amber-500">
               <WifiOff size={11} /> offline mode
@@ -113,10 +113,9 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Count */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-500">{filtered.length} product{filtered.length !== 1 ? 's' : ''} found</p>
-      </div>
+        <p className="text-xs text-gray-500">
+          {loading ? 'Loading...' : `${filtered.length} product${filtered.length !== 1 ? 's' : ''} found`}
+        </p>
 
       {/* Loading */}
       {loading && (

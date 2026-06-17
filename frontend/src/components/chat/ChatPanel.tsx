@@ -22,23 +22,49 @@ function TypingDots() {
   )
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({ msg, onSubmitEdit, isEditable }: { msg: Message, onSubmitEdit?: (content: string) => void, isEditable?: boolean }) {
   const isUser = msg.role === 'user'
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState(msg.content)
+
+  const handleSave = () => {
+    if (editContent.trim() !== msg.content && onSubmitEdit) {
+      onSubmitEdit(editContent.trim())
+    }
+    setIsEditing(false)
+  }
+
+  useEffect(() => {
+    setEditContent(msg.content)
+  }, [msg.content])
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
+      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} group relative`}
     >
       <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${isUser ? 'gradient-orange' : 'gradient-navy'
         }`}>
         {isUser ? <User size={14} className="text-white" /> : <Bot size={14} className="text-white" />}
       </div>
-      <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
+      <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed relative ${isUser
         ? 'bg-brand-orange text-white rounded-tr-sm'
         : 'bg-white border border-gray-100 text-gray-800 rounded-tl-sm shadow-card'
         }`}>
-        {isUser ? (
-          <p>{msg.content}</p>
+        {isEditing ? (
+          <div className="flex flex-col gap-2 min-w-[280px]">
+            <textarea 
+              value={editContent}
+              onChange={e => setEditContent(e.target.value)}
+              className="w-full bg-white/10 text-white placeholder-white/50 border border-white/20 rounded-xl py-2 px-3 text-sm focus:outline-none focus:bg-white/20 resize-none min-h-[44px]"
+              rows={2}
+            />
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={() => { setIsEditing(false); setEditContent(msg.content); }} className="px-3 py-1.5 text-xs rounded-lg hover:bg-white/10 transition-colors">Cancel</button>
+              <button onClick={handleSave} disabled={!editContent.trim()} className="px-3 py-1.5 text-xs rounded-lg bg-white text-brand-orange font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50">Save & Submit</button>
+            </div>
+          </div>
+        ) : isUser ? (
+          <p className="whitespace-pre-wrap">{msg.content}</p>
         ) : msg.content === '' && msg.isStreaming ? (
           <TypingDots />
         ) : (
@@ -46,7 +72,18 @@ function MessageBubble({ msg }: { msg: Message }) {
             <ReactMarkdown>{msg.content}</ReactMarkdown>
           </div>
         )}
-        {msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-4 bg-brand-orange/60 animate-pulse ml-0.5 align-middle" />}
+        {!isEditing && msg.isStreaming && msg.content !== '' && <span className="inline-block w-1 h-4 bg-brand-orange/60 animate-pulse ml-0.5 align-middle" />}
+        
+        {!isEditing && isEditable && onSubmitEdit && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="absolute top-1/2 -translate-y-1/2 -left-10 p-2 text-gray-400 hover:text-brand-orange hover:bg-orange-50 rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-sm bg-white border border-gray-100"
+            title="Edit this message"
+          >
+            <Edit2 size={14} />
+          </button>
+        )}
+
         <p className={`text-[10px] mt-1 ${isUser ? 'text-white/60' : 'text-gray-400'}`}>
           {new Date(msg.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </p>
@@ -60,17 +97,40 @@ export default function ChatPanel() {
     messages, addMessage, updateLastMessage, chatTurn, incrementChatTurn,
     profile, clearMessages, setActiveTab, conversationId, setConversationId, accessToken,
     conversations, loadConversations, loadConversationDetails, createNewChat,
-    isChatLoading
+    isChatLoading, extractContext
   } = useAppStore()
 
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [isExtracting, setIsExtracting] = useState(false)
   const [useBackend, setUseBackend] = useState(true)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editChatTitle, setEditChatTitle] = useState('')
   const [hoveredChatId, setHoveredChatId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const handleEditMessage = async (index: number, newContent: string) => {
+    const msg = messages[index];
+    if (!msg || msg.role !== 'user') return;
+    
+    // Slice up to this message
+    const newMessages = messages.slice(0, index);
+    useAppStore.getState().setMessages(newMessages);
+
+    // Send the edited message
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: newContent.trim(),
+      timestamp: new Date(),
+    }
+    useAppStore.getState().addMessage(userMsg)
+    const actualTurn = Math.floor(newMessages.length / 2)
+    useAppStore.getState().incrementChatTurn()
+    await triggerBotReply(newContent.trim(), actualTurn + 1)
+    loadConversations()
+  }
 
   const prevConvIdRef = useRef<string | null>(null)
   const prevLastMsgIdRef = useRef<string | null>(null)
@@ -97,6 +157,13 @@ export default function ChatPanel() {
     prevConvIdRef.current = conversationId
     prevLastMsgIdRef.current = lastMsg?.id || null
   }, [messages, conversationId, isChatLoading])
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+      inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
+    }
+  }, [input])
 
   useEffect(() => {
     loadConversations()
@@ -178,7 +245,7 @@ export default function ChatPanel() {
         useAppStore.getState().loadProfile(),
         useAppStore.getState().loadGoals()
       ]).catch(console.error)
-      setTimeout(() => setActiveTab('timeline'), 1500)
+      // setTimeout(() => setActiveTab('timeline'), 1500)
     }
   }
 
@@ -334,7 +401,17 @@ export default function ChatPanel() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto bg-surface-subtle border border-gray-100 border-t-0 border-b-0 p-4 space-y-4 scrollbar-thin">
           <AnimatePresence initial={false}>
-            {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+            {messages.map((msg, idx) => {
+              const isLastUserMessage = idx === messages.map(m => m.role).lastIndexOf('user') && !isStreaming;
+              return (
+                <MessageBubble 
+                  key={msg.id} 
+                  msg={msg} 
+                  isEditable={isLastUserMessage}
+                  onSubmitEdit={(newContent) => handleEditMessage(idx, newContent)}
+                />
+              )
+            })}
           </AnimatePresence>
           {isChatLoading && (
             <div className="w-full max-w-md mx-auto h-1 bg-gray-200 overflow-hidden rounded-full mb-4">
@@ -350,35 +427,74 @@ export default function ChatPanel() {
 
         {/* Quick replies */}
         <div className="card rounded-none border-x-0 border-b-0 border-t border-gray-100 bg-white">
-          <div className="flex gap-2 mb-3 flex-wrap">
-            {['Retirement at 55', 'Child abroad education', 'Aggressive ULIP', 'Safe guaranteed plan'].map(q => (
-              <button
-                key={q}
-                onClick={() => setInput(q)}
-                className="text-[11px] px-3 py-1 rounded-full border border-brand-orange/30 text-brand-orange hover:bg-brand-orange hover:text-white transition-all"
-              >
-                {q}
-              </button>
-            ))}
+          <div className="flex justify-between items-start sm:items-center mb-3 flex-col sm:flex-row gap-2">
+            <div className="flex gap-2 flex-wrap flex-1">
+              {['Retirement at 55', 'Child abroad education', 'Aggressive ULIP', 'Safe guaranteed plan'].map(q => (
+                <button
+                  key={q}
+                  onClick={() => setInput(q)}
+                  className="text-[11px] px-3 py-1 rounded-full border border-brand-orange/30 text-brand-orange hover:bg-brand-orange hover:text-white transition-all"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+            {messages.length > 2 && (
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-[10px] text-gray-400">
+                  Based on your demographics, financials & aspirations
+                </span>
+                <button
+                  onClick={async () => {
+                    if (conversationId) {
+                      setIsExtracting(true);
+                      await extractContext(conversationId);
+                      setIsExtracting(false);
+                    } else {
+                      Promise.all([
+                        useAppStore.getState().loadProfile(),
+                        useAppStore.getState().loadGoals()
+                      ]).catch(console.error);
+                    }
+                    setActiveTab('timeline');
+                  }}
+                  disabled={isExtracting}
+                  className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3 whitespace-nowrap bg-brand-navy hover:bg-brand-navy/90 border-none shadow-sm disabled:opacity-70"
+                  title="Generate Life Journey from this chat"
+                >
+                  {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  {isExtracting ? "Extracting Context..." : "Simulate Life Journey"}
+                </button>
+              </div>
+            )}
           </div>
           <form
             onSubmit={e => { e.preventDefault(); handleSend() }}
-            className="flex gap-2"
+            className="flex items-end gap-2 bg-white border border-gray-200 rounded-2xl p-1 shadow-sm focus-within:shadow-md focus-within:border-brand-orange/40 transition-all duration-300 relative"
           >
-            <input
-              ref={inputRef}
+            <textarea
+              ref={inputRef as any}
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="Tell me about your life goals..."
-              className="input-base flex-1"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (input.trim() && !isStreaming) {
+                    handleSend();
+                  }
+                }
+              }}
+              placeholder="Tell me about your life goals... (Shift+Enter for new line)"
+              className="flex-1 resize-none bg-transparent py-3 px-4 text-sm text-gray-800 focus:outline-none min-h-[48px] max-h-[120px] placeholder-gray-400 scrollbar-thin"
+              rows={1}
               disabled={isStreaming}
             />
             <button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="btn-primary px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-brand-orange text-white p-2.5 rounded-xl hover:bg-[#D85D1A] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed mb-1 mr-1 flex items-center justify-center active:scale-95"
             >
-              {isStreaming ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              {isStreaming ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </form>
         </div>

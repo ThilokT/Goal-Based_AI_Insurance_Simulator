@@ -50,6 +50,7 @@ interface AppState {
   messages: Message[]
   addMessage: (m: Message) => void
   updateLastMessage: (content: string) => void
+  setMessages: (m: Message[]) => void
   clearMessages: () => void
   chatTurn: number
   incrementChatTurn: () => void
@@ -64,6 +65,7 @@ interface AppState {
   createNewChat: () => void
   deleteConversation: (id: string) => Promise<void>
   renameConversation: (id: string, title: string) => Promise<void>
+  extractContext: (conversationId: string) => Promise<void>
 
   // Simulation
   goals: LifeGoal[]
@@ -150,6 +152,10 @@ export const useAppStore = create<AppState>()(
         }
         const cacheUpdate = s.conversationId ? { chatCache: { ...s.chatCache, [s.conversationId]: newMessages } } : {};
         return { messages: newMessages, ...cacheUpdate };
+      }),
+      setMessages: (messages) => set(s => {
+        const cacheUpdate = s.conversationId ? { chatCache: { ...s.chatCache, [s.conversationId]: messages } } : {};
+        return { messages, chatTurn: Math.floor(messages.length / 2), ...cacheUpdate };
       }),
       clearMessages: () => set({ messages: [], chatTurn: 0, conversationId: null }),
       chatTurn: 0,
@@ -284,6 +290,17 @@ export const useAppStore = create<AppState>()(
           await get().loadConversations()
         } catch {
           console.warn('Failed to rename conversation')
+        }
+      },
+      extractContext: async (conversationId: string) => {
+        try {
+          await api.post('/api/chat/extract', { conversation_id: conversationId })
+          await Promise.all([
+            get().loadProfile(),
+            get().loadGoals()
+          ])
+        } catch (err) {
+          console.error('Failed to extract context', err)
         }
       },
 

@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { id: 'dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
   { id: 'chat',       label: 'AI Advisor',   icon: MessageSquare },
   { id: 'timeline',   label: 'Life Journey', icon: TrendingUp },
-  { id: 'simulate',   label: 'What-If',      icon: Sliders },
   { id: 'products',   label: 'Products',     icon: Package },
   { id: 'compare',    label: 'Compare',      icon: BarChart3 },
   { id: 'report',     label: 'My Report',    icon: FileText },

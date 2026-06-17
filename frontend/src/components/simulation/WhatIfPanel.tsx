@@ -115,16 +115,10 @@ export default function WhatIfPanel() {
     }
   }
 
-  const totalCorpus = simulationResults.reduce((s, r) => s + r.corpusNeeded, 0)
-  const totalCovered = simulationResults.reduce((s, r) => s + r.coveredAmount, 0)
-  const totalGap = simulationResults.reduce((s, r) => s + r.gap, 0)
-  const totalPremium = simulationResults.reduce((s, r) => s + r.monthlyPremium, 0)
-
   return (
-    <div className="grid lg:grid-cols-3 gap-6">
+    <div className="space-y-4">
       {/* Controls */}
-      <div className="lg:col-span-1 space-y-4">
-        <div className="card">
+      <div className="card">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Sliders size={16} className="text-brand-orange" />
@@ -188,75 +182,6 @@ export default function WhatIfPanel() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Impact summary */}
-      <div className="lg:col-span-2 space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Total corpus needed', value: formatCurrency(totalCorpus), sub: 'across all goals', color: 'text-brand-navy' },
-            { label: 'Total covered',       value: formatCurrency(totalCovered), sub: 'by recommended products', color: 'text-green-600' },
-            { label: 'Total gap',           value: formatCurrency(totalGap), sub: 'needs to be filled', color: 'text-red-500' },
-            { label: 'Combined premium',    value: `₹${(totalPremium / 1000).toFixed(1)}K/mo`, sub: 'estimated monthly outgo', color: 'text-brand-orange' },
-          ].map(stat => (
-            <div key={stat.label} className="card p-4">
-              <p className="section-label mb-2">{stat.label}</p>
-              <p className={`text-xl font-display font-bold ${stat.color}`}>{stat.value}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{stat.sub}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="card">
-          <h3 className="font-display font-semibold text-gray-900 text-sm mb-4">Goal-wise Impact</h3>
-          <div className="space-y-4">
-            {simulationResults.map(result => {
-              const goal = goals.find(g => g.id === result.goalId)
-              const pct = result.corpusNeeded > 0 ? Math.round((result.coveredAmount / result.corpusNeeded) * 100) : 0
-              const isGood = pct >= 80
-              return (
-                <div key={result.goalId}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm">{goal?.icon ?? '🎯'}</span>
-                      <span className="text-xs font-medium text-gray-700">{goal?.label ?? result.goalId}</span>
-                      {result.recommendedProducts && result.recommendedProducts.length > 0 && (
-                        <div className="flex flex-wrap gap-1 ml-1">
-                          {result.recommendedProducts.map(cat => (
-                            <span key={cat} className="text-[9px] uppercase tracking-wider bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{cat}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isGood
-                        ? <TrendingUp size={13} className="text-green-500" />
-                        : <TrendingDown size={13} className="text-red-400" />
-                      }
-                      <span className={`text-xs font-bold ${isGood ? 'text-green-600' : 'text-red-500'}`}>{pct}%</span>
-                    </div>
-                  </div>
-                  <div className="relative w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <motion.div
-                      className={cn('h-full rounded-full', isGood ? 'bg-green-400' : 'bg-brand-orange')}
-                      animate={{ width: `${Math.min(pct, 100)}%` }}
-                      transition={{ duration: 0.5, ease: 'easeOut' }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[10px] text-gray-400">
-                      Corpus: {formatCurrency(result.corpusNeeded)}
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Gap: <span className="text-red-400 font-medium">{formatCurrency(result.gap)}</span>
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

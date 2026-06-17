@@ -9,6 +9,7 @@ import { mapBackendSimulation } from '../../types/api'
 import { CATEGORY_META } from '../../mocks/products'
 import type { SimulationResult } from '../../types'
 import FiveYearSnapshot from '../simulation/FiveYearSnapshot'
+import WhatIfPanel from '../simulation/WhatIfPanel'
 
 const CATEGORY_COLORS: Record<string, string> = {
   protection:          '#F36F21',
@@ -111,11 +112,18 @@ export default function LifeJourneyTimeline() {
   events.sort((a, b) => a.age - b.age)
 
   return (
-    <div className="space-y-6">
-      <FiveYearSnapshot />
-      
-      <div className="card overflow-hidden">
-        <div className="flex items-start justify-between mb-4">
+    <div className="grid lg:grid-cols-4 gap-6 lg:h-[calc(100vh-8rem)]">
+      {/* Left panel: What-If simulation engine */}
+      <div className="lg:col-span-1 lg:overflow-y-auto pr-1 pb-10">
+        <WhatIfPanel />
+      </div>
+
+      {/* Right panel: Visual Life Simulation */}
+      <div className="lg:col-span-3 space-y-6 lg:overflow-y-auto pr-1 pb-10">
+        <FiveYearSnapshot />
+        
+        <div className="card overflow-hidden">
+          <div className="flex items-start justify-between mb-4">
           <div>
             <h2 className="font-display font-bold text-gray-900 text-lg">Life Journey Timeline</h2>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -294,11 +302,7 @@ export default function LifeJourneyTimeline() {
                         </div>
                         <div className={cn("text-[10px] text-gray-500", isEven ? "sm:text-right" : "text-left")}>
                           Simulated via <span className="font-semibold text-brand-navy">
-                            {primaryCat === 'ulip' ? 'ICICI Pru LifeTime Classic' : 
-                             primaryCat === 'protection' ? 'ICICI Pru iProtect Smart' :
-                             primaryCat === 'participating' ? 'ICICI Pru Cash Advantage' :
-                             primaryCat === 'non-participating' ? 'ICICI Pru Guaranteed Savings' :
-                             primaryCat === 'annuity' ? 'ICICI Pru Guaranteed Pension Plan' : 'ICICI Pru Smart Plan'}
+                            ICICI Pru Protect N Gain
                           </span>
                         </div>
                       </div>
@@ -316,6 +320,7 @@ export default function LifeJourneyTimeline() {
             <div className="ml-10 sm:ml-0 sm:absolute sm:right-1/2 sm:pr-8 text-right w-full sm:w-auto">
               <span className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Age 80+</span>
             </div>
+          </div>
           </div>
         </div>
       </div>
