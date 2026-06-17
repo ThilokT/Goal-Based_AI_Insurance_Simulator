@@ -95,7 +95,7 @@ Return a valid JSON object with these fields (use null for unknown values):
         {{
             "goal_type": <string, e.g., "retirement", "child_education", "home_purchase">,
             "target_amount": <float, estimated in INR>,
-            "target_year": <int, calendar year>,
+            "target_year": <int, user's age when the goal occurs>,
             "priority": <int 1-5, 1=highest>,
             "monthly_contribution": <float or null>,
             "notes": <string or null>
@@ -107,7 +107,7 @@ IMPORTANT:
 - For amounts mentioned in lakhs, convert to INR (1 lakh = 100,000)
 - For amounts in crores, convert to INR (1 crore = 10,000,000)
 - If the user says "12 LPA", annual_income = 1,200,000
-- Estimate target_year from context (e.g., "in 5 years" = current_year + 5)
+- Estimate target_year as the user's TARGET AGE (e.g., "retire at 60" -> 60, "in 5 years" -> current age + 5)
 - If no goals are mentioned, return an empty goals array
 - Return ONLY the JSON, no other text
 
@@ -478,8 +478,38 @@ class ChatService:
             return profile
 
         except Exception as e:
-            console.print(f"[red]❌ Context extraction failed: {e}[/red]")
-            return UserProfile()
+            console.print(f"[yellow]⚠️ Gemini extraction failed ({e}), falling back to Groq...[/yellow]")
+            try:
+                groq_client = self._get_groq_client()
+                if not groq_client:
+                    raise RuntimeError("No Groq client available for fallback")
+                
+                response = groq_client.chat.completions.create(
+                    model=GROQ_CHAT_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                )
+                
+                raw_json = response.choices[0].message.content.strip()
+                data = json.loads(raw_json)
+                
+                goals = []
+                for g in data.get("goals", []):
+                    try:
+                        goals.append(FinancialGoal(**g))
+                    except Exception:
+                        continue
+                data["goals"] = goals
+                
+                profile = UserProfile(**{k: v for k, v in data.items() if v is not None})
+                console.print(f"[green]✅ Extracted profile (Groq): age={profile.age}, "
+                             f"income={profile.annual_income}, "
+                             f"goals={len(profile.goals)}[/green]")
+                return profile
+            except Exception as fallback_err:
+                console.print(f"[red]❌ Context extraction failed completely: {fallback_err}[/red]")
+                return UserProfile()
 
     def extract_context_from_messages(self, messages: list[dict]) -> UserProfile:
         """

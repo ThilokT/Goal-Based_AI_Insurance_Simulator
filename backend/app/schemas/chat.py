@@ -11,6 +11,9 @@ class ChatRequest(BaseModel):
 class ConversationRenameRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
 
+class ExtractRequest(BaseModel):
+    conversation_id: str = Field(..., description="The ID of the conversation to extract context from")
+
 
 class ChatResponse(BaseModel):
     response: str

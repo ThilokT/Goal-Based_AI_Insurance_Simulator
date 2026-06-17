@@ -3,9 +3,10 @@ Chat router — SSE streaming endpoint wrapping P3's ChatService.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, ExtractRequest
 from app.services.chat_wrapper import stream_chat_response, extract_user_context
 from app.services.conversation_service import ConversationService
+from app.services.goal_service import GoalService
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limiter import limiter, AI_RATE_LIMIT
 from app.database import get_admin_client
@@ -154,3 +155,58 @@ async def chat_sync(
         response=response,
         conversation_id=conversation_id,
     )
+
+@router.post(
+    "/chat/extract",
+    summary="Extract context from conversation",
+    description="Extracts profile fields and goals from the conversation history and saves them to the DB.",
+)
+@limiter.limit(AI_RATE_LIMIT)
+async def extract_context(
+    request: Request,
+    body: ExtractRequest,
+    user: dict = Depends(get_current_user),
+):
+    conv_service = ConversationService()
+    user_id = user["user_id"]
+    
+    conv_details = conv_service.get_conversation(body.conversation_id, user_id)
+    if not conv_details:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+        
+    messages = conv_details["messages"]
+    formatted_messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
+    
+    extracted_data = extract_user_context(user_id, formatted_messages)
+    
+    if not extracted_data:
+        return {"status": "success", "message": "No context extracted", "data": {}}
+        
+    client = get_admin_client()
+    
+    profile_update = {}
+    for key in ["age", "annual_income", "monthly_expenses", "existing_coverage", "dependents", "risk_appetite"]:
+        if key in extracted_data and extracted_data[key] is not None:
+            profile_update[key] = extracted_data[key]
+            
+    if profile_update:
+        try:
+            client.table("profiles").update(profile_update).eq("id", user_id).execute()
+        except Exception as e:
+            import logging
+            logging.getLogger("lifemap").error(f"Error updating profile during extraction: {e}")
+            
+    goals = extracted_data.get("goals", [])
+    if goals:
+        try:
+            client.table("goals").update({"is_active": False}).eq("user_id", user_id).execute()
+            goal_service = GoalService()
+            for goal in goals:
+                goal_service.create_goal(user_id, goal)
+        except Exception as e:
+            import logging
+            logging.getLogger("lifemap").error(f"Error updating goals during extraction: {e}")
+            
+    conv_service.update_context(body.conversation_id, extracted_data)
+    
+    return {"status": "success", "data": extracted_data}
