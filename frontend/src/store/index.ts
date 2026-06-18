@@ -6,6 +6,19 @@ import type { UserProfile, Message, WhatIfParams, SimulationResult, LifeGoal } f
 import { api } from '../lib/apiClient'
 
 // ─── Goal type mapper (backend → frontend) ───────────────────
+const NORMALIZE_GOAL_MAP: Record<string, string> = {
+  'home_purchase': 'Buy a Home',
+  'child_education': "Child's Higher Education",
+  'child_marriage': "Child's Marriage",
+  'retirement': 'Retirement Planning',
+  'retirement_planning': 'Retirement Planning',
+  'legacy': 'Leave a Legacy',
+  'business': 'Business Fund',
+  'business_fund': 'Business Fund',
+  'travel': 'Travel & Experiences',
+  'family_protection': 'Family Protection'
+}
+
 const GOAL_ICON_MAP: Record<string, string> = {
   "Child's Higher Education": '🎓',
   'Buy a Home': '🏠',
@@ -16,6 +29,12 @@ const GOAL_ICON_MAP: Record<string, string> = {
   'Leave a Legacy': '🛡',
   'Business Fund': '💼',
   'Travel & Experiences': '✈️',
+  // Fallbacks for unmapped
+  'home_purchase': '🏠',
+  'child_education': '🎓',
+  'child_marriage': '💍',
+  'retirement_planning': '🧘',
+  'family_protection': '🛡',
 }
 
 const GOAL_COVERED_MAP: Record<string, LifeGoal['coveredBy']> = {
@@ -65,7 +84,10 @@ interface AppState {
   createNewChat: () => void
   deleteConversation: (id: string) => Promise<void>
   renameConversation: (id: string, title: string) => Promise<void>
-  extractContext: (conversationId: string) => Promise<void>
+  extractContext: (conversationId: string) => Promise<boolean>
+  chatContexts: Record<string, { profile: Partial<UserProfile>, goals: LifeGoal[] }>
+  applyExtractedContext: (data: any, conversationId: string) => void
+  syncGlobalToChat: (conversationId: string) => Promise<boolean>
 
   // Simulation
   goals: LifeGoal[]
@@ -125,8 +147,12 @@ export const useAppStore = create<AppState>()(
                 age: res.age || undefined,
                 city: res.city || undefined,
                 income: res.annual_income ? res.annual_income / 12 : undefined,
+                monthlyExpenses: res.monthly_expenses || undefined,
+                existingCoverage: res.existing_coverage || undefined,
                 riskAppetite: res.risk_appetite ? res.risk_appetite.toLowerCase() : undefined,
                 familySize: res.dependents !== undefined && res.dependents !== null ? res.dependents : undefined,
+                maritalStatus: res.marital_status || undefined,
+                occupation: res.occupation || undefined,
                 goals: state.profile?.goals || [],
               }
             }))
@@ -139,6 +165,7 @@ export const useAppStore = create<AppState>()(
       setOnboardingStep: (onboardingStep) => set({ onboardingStep }),
 
       chatCache: {},
+      chatContexts: {},
       messages: [],
       addMessage: (m) => set(s => {
         const newMessages = [...s.messages, m];
@@ -236,6 +263,10 @@ export const useAppStore = create<AppState>()(
                 messages: accumulatedMessages,
                 chatTurn: Math.floor(accumulatedMessages.length / 2)
               })
+              // Apply conversation-specific context if it exists
+              if (res.conversation.extracted_context) {
+                get().applyExtractedContext(res.conversation.extracted_context, id)
+              }
             } else {
               // Append newer messages to the bottom
               accumulatedMessages = [...accumulatedMessages, ...chunk]
@@ -269,7 +300,9 @@ export const useAppStore = create<AppState>()(
         set({
           conversationId: null,
           messages: [],
-          chatTurn: 0
+          chatTurn: 0,
+          profile: { name: get().user?.full_name || 'User', goals: [] },
+          goals: []
         })
       },
 
@@ -294,13 +327,109 @@ export const useAppStore = create<AppState>()(
       },
       extractContext: async (conversationId: string) => {
         try {
-          await api.post('/api/chat/extract', { conversation_id: conversationId })
-          await Promise.all([
-            get().loadProfile(),
-            get().loadGoals()
-          ])
+          const res = await api.post<any>('/api/chat/extract', { conversation_id: conversationId })
+          if (res && res.data) {
+            get().applyExtractedContext(res.data, conversationId)
+          }
+          if (res && res.message) {
+            get().addMessage({
+              id: `bot-extract-${Date.now()}`,
+              role: 'assistant',
+              content: res.message,
+              timestamp: new Date()
+            })
+          }
+          return res?.status === 'success'
         } catch (err) {
           console.error('Failed to extract context', err)
+          return false
+        }
+      },
+      applyExtractedContext: (data: any, conversationId: string) => {
+        const currentGlobalProfile = get().profile
+        
+        const extractedProfile: Partial<UserProfile> = {
+          name: data.full_name || currentGlobalProfile?.name || get().user?.full_name || 'User',
+          age: data.age,
+          city: data.city,
+          income: data.annual_income ? data.annual_income / 12 : undefined,
+          monthlyExpenses: data.monthly_expenses,
+          existingCoverage: data.existing_coverage,
+          riskAppetite: data.risk_appetite,
+          familySize: data.dependents,
+          maritalStatus: data.marital_status,
+          occupation: data.occupation,
+        }
+
+        let extractedGoals: LifeGoal[] = []
+        if (data.goals && Array.isArray(data.goals)) {
+          extractedGoals = data.goals.map((g: any, i: number) => ({
+            id: `extracted-goal-${i}`,
+            label: NORMALIZE_GOAL_MAP[g.goal_type] || g.goal_type,
+            icon: GOAL_ICON_MAP[g.goal_type] ?? '🎯',
+            targetAge: g.target_year,
+            corpusNeeded: g.target_amount,
+            coveredBy: GOAL_COVERED_MAP[g.goal_type] ?? ['protection'],
+          }))
+        }
+
+        set((state) => ({
+          chatContexts: {
+            ...state.chatContexts,
+            [conversationId]: {
+              profile: extractedProfile,
+              goals: extractedGoals
+            }
+          }
+        }))
+      },
+
+      syncGlobalToChat: async (conversationId: string) => {
+        const globalProfile = get().profile
+        const globalGoals = get().goals
+        
+        if (!globalProfile) return false;
+
+        // Map global goals back to the backend schema strings
+        const reverseGoalMap: Record<string, string> = {
+          'Buy a Home': 'home_purchase',
+          "Child's Higher Education": 'child_education',
+          "Child's Marriage": 'child_marriage',
+          'Retirement Planning': 'retirement_planning',
+          'Leave a Legacy': 'legacy',
+          'Business Fund': 'business_fund',
+          'Travel & Experiences': 'travel',
+          'Family Protection': 'family_protection'
+        }
+
+        const formattedGoals = globalGoals.map(g => ({
+          goal_type: reverseGoalMap[g.label] || 'general',
+          target_amount: g.corpusNeeded,
+          target_year: g.targetAge,
+          priority: 1
+        }))
+
+        const payload = {
+          full_name: globalProfile.name,
+          age: globalProfile.age,
+          city: globalProfile.city,
+          annual_income: globalProfile.income ? globalProfile.income * 12 : undefined,
+          monthly_expenses: globalProfile.monthlyExpenses,
+          existing_coverage: globalProfile.existingCoverage,
+          risk_appetite: globalProfile.riskAppetite,
+          dependents: globalProfile.familySize,
+          marital_status: globalProfile.maritalStatus,
+          occupation: globalProfile.occupation,
+          goals: formattedGoals
+        }
+
+        try {
+          await api.put(`/api/conversations/${conversationId}/context`, payload)
+          get().applyExtractedContext(payload, conversationId)
+          return true
+        } catch (err) {
+          console.error('Failed to sync global profile to chat', err)
+          return false
         }
       },
 
@@ -313,7 +442,7 @@ export const useAppStore = create<AppState>()(
           const res = await api.get<BackendGoalListResponse>('/api/goals')
           const mapped: LifeGoal[] = res.goals.map(g => ({
             id: g.id,
-            label: g.goal_type,
+            label: NORMALIZE_GOAL_MAP[g.goal_type] || g.goal_type,
             icon: GOAL_ICON_MAP[g.goal_type] ?? '🎯',
             targetAge: g.target_year,
             corpusNeeded: g.target_amount,

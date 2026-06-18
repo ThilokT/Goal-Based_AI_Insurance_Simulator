@@ -28,8 +28,12 @@ export interface UserProfile {
   age?: number
   city?: string
   income?: number
+  monthlyExpenses?: number
+  existingCoverage?: number
   riskAppetite?: 'conservative' | 'moderate' | 'aggressive'
   familySize?: number
+  maritalStatus?: string
+  occupation?: string
   goals: string[]
 }
 

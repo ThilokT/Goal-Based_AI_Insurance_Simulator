@@ -37,7 +37,28 @@ function Legend() {
 }
 
 export default function LifeJourneyTimeline() {
-  const { profile, goals, whatIfParams, setSimulationResults, simulationResults } = useAppStore()
+  const { 
+    profile: globalProfile, 
+    goals: globalGoals, 
+    whatIfParams, 
+    setSimulationResults, 
+    simulationResults,
+    chatContexts,
+    conversationId
+  } = useAppStore()
+
+  // Pull isolated chat context
+  const activeChatContext = conversationId ? chatContexts[conversationId] : null;
+  
+  // Merge the chat profile over the global profile (so missing fields fallback to global)
+  const profile = activeChatContext?.profile 
+    ? { ...globalProfile, ...activeChatContext.profile } 
+    : globalProfile;
+
+  // Use chat extracted goals if available, otherwise fallback to global goals
+  const goals = (activeChatContext?.goals && activeChatContext.goals.length > 0)
+    ? activeChatContext.goals
+    : globalGoals;
 
   const currentAge = profile?.age ?? 30
 

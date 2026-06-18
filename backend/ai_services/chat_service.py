@@ -94,8 +94,8 @@ Return a valid JSON object with these fields (use null for unknown values):
     "goals": [
         {{
             "goal_type": <string, e.g., "retirement", "child_education", "home_purchase">,
-            "target_amount": <float, estimated in INR>,
-            "target_year": <int, user's age when the goal occurs>,
+            "target_amount": <float or null, estimated in INR>,
+            "target_year": <int or null, user's age when the goal occurs>,
             "priority": <int 1-5, 1=highest>,
             "monthly_contribution": <float or null>,
             "notes": <string or null>
@@ -522,10 +522,12 @@ class ChatService:
         Returns:
             A validated UserProfile.
         """
-        temp_user_id = "__extraction_temp__"
-        self._conversations[temp_user_id] = messages
-        profile = self.extract_context(temp_user_id)
-        del self._conversations[temp_user_id]
+        import uuid
+        temp_id = f"__extraction_{uuid.uuid4().hex}__"
+        self._conversations[temp_id] = messages
+        profile = self.extract_context(temp_id)
+        if temp_id in self._conversations:
+            del self._conversations[temp_id]
         return profile
 
 

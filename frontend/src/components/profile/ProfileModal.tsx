@@ -17,17 +17,27 @@ interface ProfileModalProps {
   onClose: () => void
 }
 
+interface EditableGoal {
+  id?: string;
+  label: string;
+  targetAmount: number;
+  targetAge: number;
+}
+
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
-  const { profile, setProfile, loadProfile, goals, createGoal, deleteGoal } = useAppStore()
+  const { profile, setProfile, loadProfile, goals, createGoal, updateGoal, deleteGoal } = useAppStore()
   
   const [formData, setFormData] = useState<Partial<UserProfile>>({
     name: '',
     age: undefined,
     city: '',
     income: undefined,
+    monthlyExpenses: undefined,
+    existingCoverage: undefined,
     riskAppetite: undefined,
     familySize: undefined,
     goals: [],
+    editableGoals: [],
   })
   
   const [isSaving, setIsSaving] = useState(false)
@@ -40,9 +50,18 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         age: profile.age,
         city: profile.city,
         income: profile.income,
+        monthlyExpenses: profile.monthlyExpenses,
+        existingCoverage: profile.existingCoverage,
         riskAppetite: profile.riskAppetite,
         familySize: profile.familySize,
-        goals: goals.map(g => g.label),
+        maritalStatus: profile.maritalStatus,
+        occupation: profile.occupation,
+        editableGoals: goals.map(g => ({
+          id: g.id,
+          label: g.label,
+          targetAmount: g.corpusNeeded || 1000000,
+          targetAge: g.targetAge || (profile.age || 30) + 10,
+        })),
       })
     } else if (isOpen && !profile) {
       loadProfile()
@@ -62,28 +81,44 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         age: formData.age,
         city: formData.city,
         annual_income: (formData.income || 0) * 12,
+        monthly_expenses: formData.monthlyExpenses,
+        existing_coverage: formData.existingCoverage,
         risk_appetite: formData.riskAppetite?.toLowerCase() || 'moderate',
         dependents: formData.familySize,
+        marital_status: formData.maritalStatus,
+        occupation: formData.occupation,
       }
       
       await api.put('/users/me', updatePayload)
       
-      const originalGoalLabels = goals.map(g => g.label)
-      const selectedGoals = formData.goals || []
+      const originalGoals = goals
+      const editableGoals = formData.editableGoals || []
       
-      const goalsToAdd = selectedGoals.filter(g => !originalGoalLabels.includes(g))
-      const goalsToRemove = goals.filter(g => !selectedGoals.includes(g.label))
+      const goalsToAdd = editableGoals.filter(eg => !eg.id)
+      const goalsToUpdate = editableGoals.filter(eg => eg.id)
+      const goalsToRemove = originalGoals.filter(g => !editableGoals.some(eg => eg.id === g.id))
 
       for (const g of goalsToRemove) {
         await deleteGoal(g.id).catch(console.error)
       }
 
-      for (const g of goalsToAdd) {
+      for (const eg of goalsToAdd) {
         await createGoal({
-          goal_type: g,
-          target_amount: 1000000, 
-          target_year: (formData.age || 30) + 10,
+          goal_type: eg.label,
+          target_amount: eg.targetAmount, 
+          target_year: eg.targetAge,
         }).catch(console.error)
+      }
+      
+      for (const eg of goalsToUpdate) {
+        const original = originalGoals.find(g => g.id === eg.id);
+        if (original && (original.corpusNeeded !== eg.targetAmount || original.targetAge !== eg.targetAge)) {
+          await updateGoal(eg.id!, {
+            goal_type: eg.label,
+            target_amount: eg.targetAmount,
+            target_year: eg.targetAge,
+          }).catch(console.error)
+        }
       }
       
       setProfile({
@@ -180,6 +215,31 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <label className="block text-xs font-semibold text-brand-navy mb-1">Monthly Expenses (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.monthlyExpenses || ''}
+                    onChange={(e) => setFormData({ ...formData, monthlyExpenses: parseInt(e.target.value) })}
+                    className="input-base w-full"
+                    min="0"
+                    step="1000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-brand-navy mb-1">Existing Coverage (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.existingCoverage || ''}
+                    onChange={(e) => setFormData({ ...formData, existingCoverage: parseInt(e.target.value) })}
+                    className="input-base w-full"
+                    min="0"
+                    step="10000"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <label className="block text-xs font-semibold text-brand-navy mb-1">Dependants</label>
                   <input
                     type="number"
@@ -204,6 +264,33 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                   </select>
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-brand-navy mb-1">Marital Status</label>
+                  <select
+                    value={formData.maritalStatus || ''}
+                    onChange={(e) => setFormData({ ...formData, maritalStatus: e.target.value })}
+                    className="input-base w-full bg-white"
+                  >
+                    <option value="">Select...</option>
+                    <option value="single">Single</option>
+                    <option value="married">Married</option>
+                    <option value="divorced">Divorced</option>
+                    <option value="widowed">Widowed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-brand-navy mb-1">Occupation</label>
+                  <input
+                    type="text"
+                    value={formData.occupation || ''}
+                    onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                    className="input-base w-full"
+                    placeholder="e.g. Software Engineer"
+                  />
+                </div>
+              </div>
               
               <div>
                 <label className="block text-xs font-semibold text-brand-navy mb-2">Life Goals</label>
@@ -213,27 +300,72 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                       key={g}
                       type="button"
                       onClick={() => {
-                        setFormData(f => ({
-                          ...f,
-                          goals: f.goals?.includes(g) ? f.goals.filter(xg => xg !== g) : [...(f.goals || []), g]
-                        }))
+                        setFormData(f => {
+                          const existing = f.editableGoals?.find(eg => eg.label === g);
+                          if (existing) {
+                            return { ...f, editableGoals: f.editableGoals?.filter(eg => eg.label !== g) }
+                          } else {
+                            return { 
+                              ...f, 
+                              editableGoals: [...(f.editableGoals || []), { label: g, targetAmount: 1000000, targetAge: (f.age || 30) + 10 }] 
+                            }
+                          }
+                        })
                       }}
                       className={cn(
-                        'text-left text-xs rounded-xl px-3 py-2 border transition-all leading-snug',
-                        formData.goals?.includes(g)
-                          ? 'border-brand-orange bg-orange-50 text-brand-orange font-medium'
-                          : 'border-gray-200 text-gray-600 hover:border-brand-orange/40'
+                        "text-xs px-3 py-2 rounded-lg border text-left transition-all",
+                        formData.editableGoals?.some(eg => eg.label === g)
+                          ? "bg-brand-orange/10 border-brand-orange text-brand-orange font-medium"
+                          : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
                       )}
                     >
-                      {formData.goals?.includes(g) && <CheckCircle2 size={12} className="inline mr-1 -mt-0.5" />}
                       {g}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {formData.editableGoals && formData.editableGoals.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  <label className="block text-xs font-semibold text-brand-navy mb-2">Configure Goals</label>
+                  {formData.editableGoals.map((eg, idx) => (
+                    <div key={eg.label} className="p-3 bg-brand-cream/30 rounded-lg border border-brand-orange/20 space-y-2">
+                      <div className="font-medium text-xs text-brand-navy">{eg.label}</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-1">Target Amount (₹)</label>
+                          <input 
+                            type="number" 
+                            className="input-base w-full py-1.5 text-xs bg-white" 
+                            value={eg.targetAmount || ''}
+                            onChange={(e) => {
+                              const newGoals = [...(formData.editableGoals || [])]
+                              newGoals[idx].targetAmount = parseInt(e.target.value) || 0
+                              setFormData({ ...formData, editableGoals: newGoals })
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-1">Target Age</label>
+                          <input 
+                            type="number" 
+                            className="input-base w-full py-1.5 text-xs bg-white" 
+                            value={eg.targetAge || ''}
+                            onChange={(e) => {
+                              const newGoals = [...(formData.editableGoals || [])]
+                              newGoals[idx].targetAge = parseInt(e.target.value) || 0
+                              setFormData({ ...formData, editableGoals: newGoals })
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             
-            <div className="mt-8 flex gap-3">
+            <div className="mt-6 pt-5 border-t border-gray-100 flex gap-3">
               <button
                 type="button"
                 onClick={onClose}

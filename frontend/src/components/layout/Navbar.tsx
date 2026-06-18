@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils'
 import ProfileModal from '../profile/ProfileModal'
 
 export default function Navbar() {
-  const { user, logout, darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useAppStore()
+  const { user, profile, logout, darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useAppStore()
   const [showProfileModal, setShowProfileModal] = useState(false)
 
   return (
@@ -62,10 +62,10 @@ export default function Navbar() {
                 title="Edit Profile"
                 className="w-8 h-8 rounded-full gradient-orange flex items-center justify-center shadow-sm hover:ring-2 hover:ring-brand-orange/50 transition-all cursor-pointer"
               >
-                <span className="text-white text-xs font-bold">{user.avatarInitials}</span>
+                <span className="text-white text-xs font-bold">{profile?.name ? profile.name.charAt(0).toUpperCase() : user.avatarInitials}</span>
               </button>
               <div className="hidden sm:block">
-                <p className="text-xs font-semibold text-gray-800 leading-tight">{user.name}</p>
+                <p className="text-xs font-semibold text-gray-800 leading-tight">{profile?.name || user.name}</p>
                 <p className="text-[10px] text-gray-400 leading-tight">{user.email}</p>
               </div>
               <button

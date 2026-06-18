@@ -25,8 +25,9 @@ def get_chat_service() -> ChatService:
 
 
 async def stream_chat_response(
-    user_id: str,
+    conversation_id: str,
     message: str,
+    history: list[dict] = None,
     user_profile: dict = None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -38,6 +39,9 @@ async def stream_chat_response(
         - data: {"type": "error", "message": "..."} — on failure
     """
     chat = get_chat_service()
+    
+    if history is not None:
+        chat.load_history(conversation_id, history)
     
     # RAG: Fetch relevant product context based on user's message
     try:
@@ -55,7 +59,7 @@ async def stream_chat_response(
 
     try:
         full_response = ""
-        stream = chat.send_message_stream(user_id, message, user_profile=user_profile, product_context=product_context)
+        stream = chat.send_message_stream(conversation_id, message, user_profile=user_profile, product_context=product_context)
 
         import re
         import asyncio
@@ -80,7 +84,7 @@ async def stream_chat_response(
         yield f"data: {json.dumps({'type': 'done', 'content': full_response})}\n\n"
 
     except Exception as e:
-        logger.error(f"Chat error for user {user_id}: {e}")
+        logger.error(f"Chat error for conversation {conversation_id}: {e}")
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
 

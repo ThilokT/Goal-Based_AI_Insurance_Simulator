@@ -116,3 +116,27 @@ async def rename_conversation(
     service.update_title(conversation_id, body.title)
     updated = service.get_conversation(conversation_id, user["user_id"])
     return ConversationResponse(**updated["conversation"])
+
+@router.put(
+    "/{conversation_id}/context",
+    response_model=dict,
+    summary="Overwrite conversation context",
+)
+@limiter.limit(CRUD_RATE_LIMIT)
+async def update_conversation_context(
+    request: Request,
+    conversation_id: str,
+    context: dict,
+    user: dict = Depends(get_current_user),
+):
+    """Overwrite the isolated context for this chat."""
+    service = ConversationService()
+    existing = service.get_conversation(conversation_id, user["user_id"])
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+    service.update_context(conversation_id, context)
+    return {"status": "success", "context": context}
+

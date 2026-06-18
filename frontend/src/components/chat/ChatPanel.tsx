@@ -93,16 +93,20 @@ function MessageBubble({ msg, onSubmitEdit, isEditable }: { msg: Message, onSubm
 }
 
 export default function ChatPanel() {
-  const {
+  const { 
     messages, addMessage, updateLastMessage, chatTurn, incrementChatTurn,
     profile, clearMessages, setActiveTab, conversationId, setConversationId, accessToken,
     conversations, loadConversations, loadConversationDetails, createNewChat,
-    isChatLoading, extractContext
+    isChatLoading, extractContext, chatContexts
   } = useAppStore()
+
+  const currentChatContext = conversationId ? chatContexts[conversationId] : null;
 
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
+  const [isExtractingTop, setIsExtractingTop] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [useBackend, setUseBackend] = useState(true)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editChatTitle, setEditChatTitle] = useState('')
@@ -236,17 +240,6 @@ export default function ChatPanel() {
       }
     }
     setIsStreaming(false)
-
-    if (turn >= 5) {
-      // Refresh profile and goals from backend before switching to timeline
-      // Note: Backend context extraction might take a few seconds,
-      // a more robust approach would be SSE events or polling, but this is a good start.
-      Promise.all([
-        useAppStore.getState().loadProfile(),
-        useAppStore.getState().loadGoals()
-      ]).catch(console.error)
-      // setTimeout(() => setActiveTab('timeline'), 1500)
-    }
   }
 
   async function handleSend() {
@@ -389,8 +382,35 @@ export default function ChatPanel() {
               <Sparkles size={9} /> AI
             </span>
             <button
+              onClick={async () => {
+                let targetConvId = conversationId;
+                setIsExtractingTop(true);
+                try {
+                  if (!targetConvId) {
+                    const res = await api.post<any>('/api/conversations', {});
+                    targetConvId = res.id;
+                    setConversationId(targetConvId);
+                    loadConversations();
+                  }
+                  if (targetConvId) {
+                    await extractContext(targetConvId);
+                  }
+                } catch (err) {
+                  console.error('Failed to create chat or extract profile', err);
+                } finally {
+                  setIsExtractingTop(false);
+                }
+              }}
+              disabled={isExtractingTop}
+              className="btn-ghost text-xs py-1.5 px-2 flex items-center gap-1"
+              title="Manually extract profile information from chat"
+            >
+              {isExtractingTop ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              Extract Profile
+            </button>
+            <button
               onClick={() => { clearMessages(); setUseBackend(true); }}
-              className="btn-ghost text-xs py-1.5 px-2"
+              className="btn-ghost text-xs py-1.5 px-2 flex items-center gap-1"
               title="Restart conversation"
             >
               <RotateCcw size={13} /> Restart
@@ -444,27 +464,69 @@ export default function ChatPanel() {
                 <span className="text-[10px] text-gray-400">
                   Based on your demographics, financials & aspirations
                 </span>
-                <button
-                  onClick={async () => {
-                    if (conversationId) {
-                      setIsExtracting(true);
-                      await extractContext(conversationId);
-                      setIsExtracting(false);
-                    } else {
-                      Promise.all([
-                        useAppStore.getState().loadProfile(),
-                        useAppStore.getState().loadGoals()
-                      ]).catch(console.error);
-                    }
-                    setActiveTab('timeline');
-                  }}
-                  disabled={isExtracting}
-                  className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3 whitespace-nowrap bg-brand-navy hover:bg-brand-navy/90 border-none shadow-sm disabled:opacity-70"
-                  title="Generate Life Journey from this chat"
-                >
-                  {isExtracting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                  {isExtracting ? "Extracting Context..." : "Simulate Life Journey"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (conversationId) {
+                        setIsSyncing(true);
+                        await useAppStore.getState().syncGlobalToChat(conversationId);
+                        setIsSyncing(false);
+                      }
+                    }}
+                    disabled={isSyncing}
+                    className="flex items-center gap-1.5 text-xs py-1.5 px-3 whitespace-nowrap bg-white text-brand-navy border border-brand-navy/20 hover:bg-brand-navy hover:text-white transition-colors rounded-lg shadow-sm disabled:opacity-70"
+                    title="Overwrite this chat's isolated variables with your real Global Profile"
+                  >
+                    {isSyncing ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                    {isSyncing ? "Syncing..." : "Use Global Profile"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (conversationId) {
+                        const missing = [];
+                        if (!currentChatContext?.profile?.age) missing.push('Age');
+                        if (!currentChatContext?.profile?.income) missing.push('Annual Income');
+                        if (!currentChatContext?.goals || currentChatContext.goals.length === 0) missing.push('Financial Goals');
+
+                        if (missing.length > 0) {
+                          addMessage({
+                            id: `bot-missing-${Date.now()}`,
+                            role: 'assistant',
+                            content: `I'm missing some details to run your simulation. Please provide the following: **${missing.join(', ')}**, and then click **Extract Profile**.`,
+                            timestamp: new Date()
+                          });
+                        } else {
+                          setActiveTab('timeline');
+                        }
+                      }
+                    }}
+                    className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3 whitespace-nowrap bg-brand-navy hover:bg-brand-navy/90 border-none shadow-sm"
+                    title="Generate Life Journey from current isolated variables"
+                  >
+                    <Sparkles size={13} />
+                    Simulate Life Journey
+                  </button>
+                </div>
+                {currentChatContext && (
+                  <div className="mt-3 text-[11px] text-gray-500 bg-brand-cream/30 p-2.5 rounded-lg border border-brand-orange/20 text-left w-full max-w-[280px]">
+                    <p className="font-semibold text-brand-navy mb-1.5 flex items-center gap-1">
+                      <Sparkles size={11} className="text-brand-orange" />
+                      Isolated Chat Variables
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                      <div><span className="text-gray-400">Age:</span> {currentChatContext.profile.age || '—'}</div>
+                      <div><span className="text-gray-400">Income:</span> {currentChatContext.profile.income ? `₹${(currentChatContext.profile.income * 12).toLocaleString()}` : '—'}</div>
+                      <div><span className="text-gray-400">City:</span> {currentChatContext.profile.city || '—'}</div>
+                      <div><span className="text-gray-400">Dependents:</span> {currentChatContext.profile.familySize ?? '—'}</div>
+                    </div>
+                    <div className="mt-1.5 pt-1.5 border-t border-brand-orange/10">
+                      <span className="text-gray-400">Goals:</span>{' '}
+                      {currentChatContext.goals && currentChatContext.goals.length > 0 
+                        ? currentChatContext.goals.map((g: any) => `${g.label}`).join(', ') 
+                        : 'None identified'}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
