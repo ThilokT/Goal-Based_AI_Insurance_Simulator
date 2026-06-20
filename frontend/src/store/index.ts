@@ -98,8 +98,18 @@ interface AppState {
   deleteGoal: (id: string) => Promise<void>
   simulationResults: SimulationResult[]
   setSimulationResults: (r: SimulationResult[]) => void
+  yearlyProjections: YearlyProjection[]
+  setYearlyProjections: (p: YearlyProjection[]) => void
   whatIfParams: WhatIfParams
   setWhatIfParams: (p: Partial<WhatIfParams>) => void
+  productWhatIfParams: { monthlyPremium: number; tenureYears: number }
+  setProductWhatIfParams: (p: Partial<{ monthlyPremium: number; tenureYears: number }>) => void
+  simulationMode: 'goals' | 'product'
+  setSimulationMode: (mode: 'goals' | 'product') => void
+  isOffline: boolean
+  setIsOffline: (v: boolean) => void
+  isSimulating: boolean
+  setIsSimulating: (v: boolean) => void
 
   // Products (cached count from API)
   productCount: number
@@ -483,15 +493,32 @@ export const useAppStore = create<AppState>()(
       },
 
       simulationResults: [],
-      setSimulationResults: (simulationResults) => set({ simulationResults }),
+      setSimulationResults: (r) => set({ simulationResults: r }),
+      yearlyProjections: [],
+      setYearlyProjections: (p) => set({ yearlyProjections: p }),
       whatIfParams: {
         retirementAge: 60,
         childEducationAbroad: false,
         inflationRate: 6,
-        existingSavings: 500_000,
+        existingSavings: 500000,
         annualIncrementPercent: 8,
       },
-      setWhatIfParams: (p) => set(s => ({ whatIfParams: { ...s.whatIfParams, ...p } })),
+      setWhatIfParams: (p) => set((state) => ({ 
+        whatIfParams: { ...state.whatIfParams, ...p } 
+      })),
+      productWhatIfParams: {
+        monthlyPremium: 10000,
+        tenureYears: 20,
+      },
+      setProductWhatIfParams: (p) => set((state) => ({
+        productWhatIfParams: { ...state.productWhatIfParams, ...p }
+      })),
+      simulationMode: 'goals',
+      setSimulationMode: (simulationMode) => set({ simulationMode }),
+      isOffline: false,
+      setIsOffline: (isOffline) => set({ isOffline }),
+      isSimulating: false,
+      setIsSimulating: (isSimulating) => set({ isSimulating }),
 
       productCount: 0,
       setProductCount: (productCount) => set({ productCount }),

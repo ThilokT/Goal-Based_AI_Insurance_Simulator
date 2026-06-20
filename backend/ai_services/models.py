@@ -107,12 +107,21 @@ class SimulationResult(BaseModel):
     expected_return: float
 
 
+class YearlyProjection(BaseModel):
+    """Year-by-year trajectory of the simulation across all goals."""
+    year: int
+    age: int
+    total_invested: float
+    projected_corpus: float
+
+
 class MultiGoalSimulationResult(BaseModel):
     """Aggregated simulation output for all user goals."""
     user_age: int
     total_monthly_savings_required: float
     total_gap: float
     goals: list[SimulationResult]
+    yearly_projections: list[YearlyProjection] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

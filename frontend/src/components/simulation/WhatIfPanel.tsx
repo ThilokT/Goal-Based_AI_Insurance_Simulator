@@ -3,7 +3,6 @@ import { motion } from 'framer-motion'
 import { Sliders, RefreshCw, TrendingUp, TrendingDown, WifiOff } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { formatCurrency } from '../../lib/utils'
-import { runSimulation } from '../../mocks/simulation'
 import { api, ApiError } from '../../lib/apiClient'
 import type { SimulateRequest, BackendSimulateResponse } from '../../types/api'
 import { mapBackendSimulation } from '../../types/api'
@@ -37,48 +36,59 @@ function SliderRow({
 }
 
 export default function WhatIfPanel() {
-  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults } = useAppStore()
-  const [usingFallback, setUsingFallback] = useState(false)
+  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating } = useAppStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Debounced API simulation call
-  const runApiSimulation = useCallback(async (params: typeof whatIfParams) => {
-    if (!profile || goals.length === 0) return
+  // Use chat context profile if available
+  const activeChatContext = conversationId ? chatContexts[conversationId] : null
+  const activeProfile = activeChatContext?.profile ? { ...profile, ...activeChatContext.profile } : profile
+  const activeGoals = (activeChatContext?.goals && activeChatContext.goals.length > 0)
+    ? activeChatContext.goals
+    : goals
 
-    // Build the SimulateRequest from profile + params + goals
+  // Debounced API simulation call — now sends what-if params
+  const runApiSimulation = useCallback(async (params: typeof whatIfParams) => {
+    if (!activeProfile || activeGoals.length === 0) return
+
     const payload: SimulateRequest = {
-      age: profile.age,
-      annual_income: profile.income * 12,
-      monthly_expenses: undefined,
-      dependents: profile.familySize,
-      risk_appetite: profile.riskAppetite,
-      goals: goals.map(g => ({
+      age: activeProfile.age,
+      annual_income: activeProfile.income ? activeProfile.income * 12 : undefined,
+      monthly_expenses: activeProfile.monthlyExpenses,
+      dependents: activeProfile.familySize,
+      risk_appetite: activeProfile.riskAppetite,
+      goals: activeGoals.map(g => ({
         goal_type: g.label,
         target_amount: g.corpusNeeded,
         target_year: g.targetAge,
         priority: 1,
       })),
+      // ── What-If params wired to backend ──
+      inflation_rate: params.inflationRate / 100,
+      existing_savings: params.existingSavings,
+      annual_increment_percent: params.annualIncrementPercent / 100,
+      retirement_age: params.retirementAge,
+      child_education_abroad: params.childEducationAbroad,
     }
 
+    setIsSimulating(true)
     try {
       const res = await api.post<BackendSimulateResponse>('/api/simulate', payload)
       const mapped: SimulationResult[] = res.goals.map(goalResult => {
         const result = mapBackendSimulation(goalResult)
-        // Try to find the matching local goal by type
-        const localGoal = goals.find(g => g.label === goalResult.goal_type)
+        const localGoal = activeGoals.find(g => g.label === goalResult.goal_type)
         if (localGoal) result.goalId = localGoal.id
         return result
       })
       setSimulationResults(mapped)
-      setUsingFallback(false)
+      setIsOffline(false)
     } catch {
-      // Fall back to local simulation
-      console.warn('Simulation API unavailable, using local calculation')
-      const results = runSimulation(profile, params, goals)
-      setSimulationResults(results)
-      setUsingFallback(true)
+      // Fall back to offline
+      console.warn('Simulation API unavailable, setting offline state')
+      setIsOffline(true)
+    } finally {
+      setIsSimulating(false)
     }
-  }, [profile, goals, setSimulationResults])
+  }, [activeProfile, activeGoals, setSimulationResults, setIsOffline, setIsSimulating])
 
   function update(key: keyof typeof whatIfParams, value: number | boolean) {
     const next = { ...whatIfParams, [key]: value }
@@ -87,12 +97,9 @@ export default function WhatIfPanel() {
     // Debounce API calls (500ms)
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      if (profile) {
+      if (activeProfile) {
         runApiSimulation(next).catch(() => {
-          // Fallback to local
-          const results = runSimulation(profile, next, goals)
-          setSimulationResults(results)
-          setUsingFallback(true)
+          setIsOffline(true)
         })
       }
     }, 500)
@@ -107,10 +114,9 @@ export default function WhatIfPanel() {
       annualIncrementPercent: 8,
     }
     setWhatIfParams(defaults)
-    if (profile) {
+    if (activeProfile) {
       runApiSimulation(defaults).catch(() => {
-        setSimulationResults(runSimulation(profile, defaults, goals))
-        setUsingFallback(true)
+        setIsOffline(true)
       })
     }
   }
@@ -123,9 +129,9 @@ export default function WhatIfPanel() {
             <div className="flex items-center gap-2">
               <Sliders size={16} className="text-brand-orange" />
               <h3 className="font-display font-semibold text-gray-900 text-sm">What-If Controls</h3>
-              {usingFallback && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-amber-500">
-                  <WifiOff size={9} /> offline
+              {isOffline && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-red-500 font-medium bg-red-50 px-2 py-0.5 rounded">
+                  <WifiOff size={9} /> API Offline
                 </span>
               )}
             </div>
@@ -148,17 +154,27 @@ export default function WhatIfPanel() {
               onChange={v => update('inflationRate', v)}
             />
             <SliderRow
-              label="Existing savings"
-              value={whatIfParams.existingSavings}
-              min={0} max={5_000_000} step={50000}
-              unit=""
-              onChange={v => update('existingSavings', v)}
+              label="Annual SIP step-up"
+              value={whatIfParams.annualIncrementPercent}
+              min={0} max={20} unit="%"
+              onChange={v => update('annualIncrementPercent', v)}
             />
 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-medium text-gray-600">Existing savings</label>
                 <span className="text-xs font-bold text-brand-navy">{formatCurrency(whatIfParams.existingSavings)}</span>
+              </div>
+              <input
+                type="range"
+                min={0} max={5_000_000} step={50000}
+                value={whatIfParams.existingSavings}
+                onChange={e => update('existingSavings', +e.target.value)}
+                className="w-full accent-brand-orange h-1.5"
+              />
+              <div className="flex justify-between mt-0.5">
+                <span className="text-[10px] text-gray-400">₹0</span>
+                <span className="text-[10px] text-gray-400">₹50L</span>
               </div>
             </div>
 

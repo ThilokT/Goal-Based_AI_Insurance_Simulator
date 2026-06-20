@@ -2,7 +2,7 @@
 Simulate router — runs financial simulations via P3's engine.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from app.schemas.simulate import SimulateRequest, SimulateResponse
+from app.schemas.simulate import SimulateRequest, SimulateResponse, ProductSimulateRequest, ProductSimulateResponse
 from app.services.simulation_wrapper import run_simulation
 from app.services.simulation_session_service import SimulationSessionService
 from app.middleware.auth import get_current_user
@@ -55,4 +55,33 @@ async def simulate(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Simulation failed: {str(e)}",
+        )
+
+@router.post(
+    "/simulate/product",
+    response_model=ProductSimulateResponse,
+    summary="Run a product-specific simulation",
+    description="Simulate a matched product based on demographic inputs.",
+)
+@limiter.limit(AI_RATE_LIMIT)
+async def simulate_product(
+    request: Request,
+    body: ProductSimulateRequest,
+    user: dict = Depends(get_current_user),
+):
+    from ai_services.simulation_engine import SimulationEngine
+    
+    try:
+        engine = SimulationEngine()
+        result = engine.simulate_matched_product(
+            user_age=body.user_age,
+            monthly_premium=body.monthly_premium,
+            tenure_years=body.tenure_years,
+            risk_appetite=body.risk_appetite
+        )
+        return ProductSimulateResponse(**result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Product simulation failed: {str(e)}",
         )

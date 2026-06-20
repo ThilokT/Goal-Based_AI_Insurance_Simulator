@@ -44,6 +44,16 @@ export interface SimulationResult {
   gap: number
   recommendedProducts: string[]
   monthlyPremium: number
+  recommendedProductName?: string
+  recommendedProductCategory?: string
+  recommendedProductId?: string
+}
+
+export interface YearlyProjection {
+  year: number
+  age: number
+  totalInvested: number
+  projectedCorpus: number
 }
 
 export interface Message {

@@ -8,16 +8,25 @@ export default function FiveYearSnapshot() {
 
   if (!profile || simulationResults.length === 0) return null
 
-  // 1. Calculate 5-Year Savings Projection
-  // Assume a 20% savings rate if we don't have explicit expenses, with an 8% expected return
-  const annualSavings = (profile.income * 12) * 0.20
-  const returnRate = 0.08
+  // 1. Calculate 5-Year Savings Projection using risk-aware returns
+  const RETURN_BY_RISK: Record<string, number> = {
+    conservative: 0.075,
+    moderate: 0.090,
+    aggressive: 0.110,
+  }
+  const returnRate = RETURN_BY_RISK[profile.riskAppetite || 'moderate'] || 0.09
+  const annualSavings = (profile.income || 0) * 12 * 0.20 // 20% savings rate
   
-  // Future Value of existing savings
+  // Future Value of existing savings (from what-if slider)
   const fvExisting = whatIfParams.existingSavings * Math.pow(1 + returnRate, 5)
   
-  // Future Value of an annuity (annual savings invested each year)
-  const fvAnnual = annualSavings * ((Math.pow(1 + returnRate, 5) - 1) / returnRate)
+  // Future Value of an annuity (annual savings invested each year, stepped up)
+  const increment = whatIfParams.annualIncrementPercent / 100
+  let fvAnnual = 0
+  for (let yr = 0; yr < 5; yr++) {
+    const yearSavings = annualSavings * Math.pow(1 + increment, yr)
+    fvAnnual += yearSavings * Math.pow(1 + returnRate, 5 - yr - 1)
+  }
   
   const projectedSavings5Y = Math.round(fvExisting + fvAnnual)
 
@@ -26,8 +35,9 @@ export default function FiveYearSnapshot() {
   const totalCovered = simulationResults.reduce((acc, r) => acc + r.coveredAmount, 0)
   const totalGap = totalCorpusNeeded - totalCovered
   
-  // Assuming in 5 years, the corpus needed inflates by inflationRate
-  const projectedCorpusNeeded5Y = totalCorpusNeeded * Math.pow(1 + (whatIfParams.inflationRate / 100), 5)
+  // Inflating by user's selected inflation rate (from what-if slider)
+  const inflationRate = whatIfParams.inflationRate / 100
+  const projectedCorpusNeeded5Y = totalCorpusNeeded * Math.pow(1 + inflationRate, 5)
   
   // Projected coverage gap if no action taken
   const projectedGap5Y = Math.max(0, projectedCorpusNeeded5Y - totalCovered - projectedSavings5Y)

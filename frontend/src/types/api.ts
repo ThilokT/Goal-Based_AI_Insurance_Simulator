@@ -172,6 +172,13 @@ export interface SimulateRequest {
   dependents?: number | null
   risk_appetite?: string
   goals: GoalInput[]
+  // What-If parameters
+  inflation_rate?: number | null
+  existing_savings?: number | null
+  annual_increment_percent?: number | null
+  retirement_age?: number | null
+  child_education_abroad?: boolean | null
+  expected_return_override?: number | null
 }
 
 export interface BackendGoalResult {
@@ -185,6 +192,16 @@ export interface BackendGoalResult {
   coverage_ratio: number
   inflation_rate: number
   expected_return: number
+  recommended_product_name?: string | null
+  recommended_product_category?: string | null
+  recommended_product_id?: string | null
+}
+
+export interface BackendYearlyProjection {
+  year: number
+  age: number
+  total_invested: number
+  projected_corpus: number
 }
 
 export interface BackendSimulateResponse {
@@ -193,9 +210,30 @@ export interface BackendSimulateResponse {
   total_monthly_savings_required: number
   total_gap: number
   goals: BackendGoalResult[]
+  yearly_projections: BackendYearlyProjection[]
   disclaimers: string[]
   warnings: string[]
   timestamp?: string | null
+}
+
+export interface BackendProductSimulateRequest {
+  monthly_premium: number
+  tenure_years: number
+  risk_appetite: string
+  user_age: number
+}
+
+export interface BackendProductSimulateResponse {
+  product_name: string
+  product_category: string
+  monthly_premium: number
+  tenure_years: number
+  total_invested: number
+  projected_corpus: number
+  expected_return_rate: number
+  yearly_projections: BackendYearlyProjection[]
+  warnings: string[]
+  disclaimers: string[]
 }
 
 import type { SimulationResult } from '../types'
@@ -206,8 +244,13 @@ export function mapBackendSimulation(goalResult: BackendGoalResult): SimulationR
     corpusNeeded: Math.round(goalResult.future_value),
     coveredAmount: Math.round(goalResult.projected_corpus),
     gap: Math.round(goalResult.current_gap),
-    recommendedProducts: [],
+    recommendedProducts: goalResult.recommended_product_name
+      ? [goalResult.recommended_product_category || 'insurance']
+      : [],
     monthlyPremium: Math.round(goalResult.monthly_savings_required),
+    recommendedProductName: goalResult.recommended_product_name || undefined,
+    recommendedProductCategory: goalResult.recommended_product_category || undefined,
+    recommendedProductId: goalResult.recommended_product_id || undefined,
   }
 }
 
