@@ -73,8 +73,8 @@ export default function Dashboard() {
           <div className="mt-4">
             <div className="w-full bg-white/10 rounded-full h-2">
               <motion.div
-                className="h-2 rounded-full bg-brand-orange"
-                animate={{ width: `${overallPct}%` }}
+                className={`h-2 rounded-full ${overallPct >= 100 ? 'bg-green-500' : 'bg-brand-orange'}`}
+                animate={{ width: `${Math.min(overallPct, 100)}%` }}
                 transition={{ duration: 1, ease: 'easeOut' }}
               />
             </div>
