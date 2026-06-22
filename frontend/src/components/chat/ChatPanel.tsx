@@ -108,7 +108,7 @@ export default function ChatPanel() {
   const [isExtractingTop, setIsExtractingTop] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [useBackend, setUseBackend] = useState(true)
-  const [showChatVariables, setShowChatVariables] = useState(true)
+  const [showChatVariables, setShowChatVariables] = useState(false)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editChatTitle, setEditChatTitle] = useState('')
   const [hoveredChatId, setHoveredChatId] = useState<string | null>(null)

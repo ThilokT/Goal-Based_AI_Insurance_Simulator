@@ -147,9 +147,12 @@ export const useAppStore = create<AppState>()(
         activeTab: 'dashboard',
       }),
 
+      isProfileLoading: true,
+      setIsProfileLoading: (isProfileLoading) => set({ isProfileLoading }),
       profile: null,
       setProfile: (profile) => set({ profile }),
       loadProfile: async () => {
+        set({ isProfileLoading: true })
         try {
           const res = await api.get<any>('/users/me')
           if (res && res.age) {
@@ -171,6 +174,8 @@ export const useAppStore = create<AppState>()(
           }
         } catch (err) {
           console.error('Failed to load profile from API', err)
+        } finally {
+          set({ isProfileLoading: false })
         }
       },
       onboardingStep: 0,
@@ -330,11 +335,17 @@ export const useAppStore = create<AppState>()(
         }
       },
       renameConversation: async (id: string, title: string) => {
+        // Optimistic UI update
+        set((state) => ({
+          conversations: state.conversations.map(c => 
+            c.id === id ? { ...c, title } : c
+          )
+        }))
         try {
           await api.patch(`/api/conversations/${id}`, { title })
-          await get().loadConversations()
         } catch {
           console.warn('Failed to rename conversation')
+          await get().loadConversations() // Revert on failure
         }
       },
       extractContext: async (conversationId: string) => {

@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, MessageSquare, TrendingUp, Package, Sliders, Target, IndianRupee, Users, Shield } from 'lucide-react'
+import { ArrowRight, MessageSquare, TrendingUp, Package, Sliders, Target, IndianRupee, Users, Shield, Loader2 } from 'lucide-react'
 import { useAppStore } from '../store'
 import { formatCurrency } from '../lib/utils'
 import { api } from '../lib/apiClient'
@@ -15,20 +15,25 @@ const QUICK_ACTIONS = [
 ]
 
 export default function Dashboard() {
-  const { user, profile, goals, simulationResults, setActiveTab, productCount, setProductCount, setIsProfileModalOpen } = useAppStore()
+  const { user, profile, goals, simulationResults, setActiveTab, productCount, setProductCount, setIsProfileModalOpen, isProfileLoading } = useAppStore()
+  const [isProductsLoading, setIsProductsLoading] = useState(true)
 
   // Fetch live product count on mount
   useEffect(() => {
     async function fetchCount() {
+      setIsProductsLoading(true)
       try {
         const res = await api.get<BackendProductListResponse>('/api/products')
         setProductCount(res.total || res.products.length)
       } catch {
         // Fallback to mock data count
         if (productCount === 0) setProductCount(MOCK_PRODUCTS.length)
+      } finally {
+        setIsProductsLoading(false)
       }
     }
     if (productCount === 0) fetchCount()
+    else setIsProductsLoading(false)
   }, [])
 
   const totalGap = simulationResults.reduce((s, r) => s + r.gap, 0)
@@ -44,7 +49,12 @@ export default function Dashboard() {
           <div>
             <p className="text-white/60 text-sm mb-1">Welcome back</p>
             <h1 className="text-2xl font-display font-bold mb-1">{user?.name ?? 'Explorer'}</h1>
-            {profile ? (
+            {isProfileLoading ? (
+               <div className="flex items-center gap-2 mt-1">
+                 <Loader2 size={12} className="animate-spin text-white/70" />
+                 <span className="text-white/70 text-sm">Loading profile...</span>
+               </div>
+            ) : profile ? (
               <p className="text-white/70 text-sm capitalize">
                 Age {profile.age || '—'} · {profile.city || 'Add City'} · {profile.riskAppetite ? profile.riskAppetite + ' risk' : 'Add Risk'} · {goals.length} goal{goals.length !== 1 ? 's' : ''} planned
               </p>
@@ -101,20 +111,28 @@ export default function Dashboard() {
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Target, label: 'Goals mapped', value: goals.length, sub: 'life milestones', color: 'text-brand-orange' },
-          { icon: IndianRupee, label: 'Monthly income', value: profile?.income ? `₹${(profile.income / 1000).toFixed(0)}K` : 'Add Income', sub: 'household income', color: 'text-brand-navy' },
-          { icon: Users, label: 'Family size', value: profile?.familySize ?? 'Add Dependents', sub: 'dependants', color: 'text-purple-600' },
-          { icon: Shield, label: 'Products matched', value: productCount || MOCK_PRODUCTS.length, sub: 'across 5 categories', color: 'text-green-600' },
-        ].map(({ icon: Icon, label, value, sub, color }, i) => (
+          { icon: Target, label: 'Goals mapped', value: goals.length, sub: 'life milestones', color: 'text-brand-orange', isLoading: isProfileLoading },
+          { icon: IndianRupee, label: 'Monthly income', value: profile?.income ? `₹${(profile.income / 1000).toFixed(0)}K` : 'Add Income', sub: 'household income', color: 'text-brand-navy', isLoading: isProfileLoading },
+          { icon: Users, label: 'Family size', value: profile?.familySize ?? 'Add Dependents', sub: 'dependants', color: 'text-purple-600', isLoading: isProfileLoading },
+          { icon: Shield, label: 'Products matched', value: productCount || MOCK_PRODUCTS.length, sub: 'across 5 categories', color: 'text-green-600', isLoading: isProductsLoading },
+        ].map(({ icon: Icon, label, value, sub, color, isLoading }, i) => (
           <motion.div
             key={label}
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 + i * 0.06 }}
-            className="card"
+            className="card flex flex-col justify-between"
           >
-            <Icon size={16} className={`${color} mb-2`} />
-            <p className="section-label mb-1">{label}</p>
-            <p className={`text-2xl font-display font-bold ${color}`}>{value}</p>
+            <div>
+              <Icon size={16} className={`${color} mb-2`} />
+              <p className="section-label mb-1">{label}</p>
+            </div>
+            {isLoading ? (
+              <div className="h-[32px] flex items-center">
+                <Loader2 size={18} className={`animate-spin ${color}`} />
+              </div>
+            ) : (
+              <p className={`text-2xl font-display font-bold ${color}`}>{value}</p>
+            )}
             <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>
           </motion.div>
         ))}
