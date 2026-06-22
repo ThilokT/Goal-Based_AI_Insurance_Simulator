@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '../../store'
 import { formatCurrency, cn } from '../../lib/utils'
@@ -14,8 +14,50 @@ const CATEGORY_COLORS: Record<string, string> = {
   'non-participating': '#22C55E',
   annuity:             '#9333EA',
 }
-import SimulationProjectionChart from '../simulation/SimulationProjectionChart'
 import WhatIfPanel from '../simulation/WhatIfPanel'
+
+const GoalTargetSlider = ({ goal, currentAmount, isEven }: { goal: any, currentAmount: number, isEven: boolean }) => {
+  const [localAmount, setLocalAmount] = useState(currentAmount)
+  const { whatIfParams, setWhatIfParams } = useAppStore()
+
+  useEffect(() => {
+    setLocalAmount(currentAmount)
+  }, [currentAmount])
+
+  return (
+    <>
+      <div className={cn("flex items-center justify-between mb-1.5", isEven ? "flex-row-reverse" : "")}>
+        <label className="text-[9px] text-gray-500 font-medium uppercase tracking-wider">Cost Today</label>
+        <span className="text-[10px] font-bold text-brand-navy">
+          {formatCurrency(localAmount)}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={100000}
+        max={50000000}
+        step={100000}
+        value={localAmount}
+        onChange={(e) => setLocalAmount(+e.target.value)}
+        onMouseUp={() => {
+          if (goal?.id && localAmount !== currentAmount) {
+            const nextAmounts = { ...(whatIfParams.goalTargetAmounts || {}), [goal.id]: localAmount }
+            setWhatIfParams({ goalTargetAmounts: nextAmounts })
+          }
+        }}
+        onTouchEnd={() => {
+          if (goal?.id && localAmount !== currentAmount) {
+            const nextAmounts = { ...(whatIfParams.goalTargetAmounts || {}), [goal.id]: localAmount }
+            setWhatIfParams({ goalTargetAmounts: nextAmounts })
+          }
+        }}
+        className={cn("w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-orange")}
+        dir={isEven ? "rtl" : "ltr"}
+      />
+    </>
+  )
+}
+
 import ProductSimulationView from '../simulation/ProductSimulationView'
 
 function Legend() {
@@ -71,48 +113,52 @@ export default function LifeJourneyTimeline() {
   useEffect(() => {
     if (!profile || goals.length === 0 || simulationMode === 'product') return
 
-    // Try backend simulation API first, fall back to local mock
-    async function runSim() {
-      setIsSimulating(true)
-      try {
-        const payload: SimulateRequest = {
-          age: profile!.age,
-          annual_income: profile!.income ? profile!.income * 12 : undefined,
-          monthly_expenses: profile!.monthlyExpenses,
-          dependents: profile!.familySize,
-          risk_appetite: profile!.riskAppetite,
-          goals: goals.map(g => ({
-            goal_type: g.label,
-            target_amount: g.corpusNeeded,
-            target_year: g.targetAge,
-            priority: 1,
-          })),
-          // What-If params
-          inflation_rate: whatIfParams.inflationRate / 100,
-          existing_savings: whatIfParams.existingSavings,
-          annual_increment_percent: whatIfParams.annualIncrementPercent / 100,
-          retirement_age: whatIfParams.retirementAge,
-          child_education_abroad: whatIfParams.childEducationAbroad,
+    setIsSimulating(true)
+
+    const timeoutId = setTimeout(() => {
+      async function runSim() {
+        try {
+          const payload: SimulateRequest = {
+            age: profile!.age,
+            annual_income: profile!.income ? profile!.income * 12 : undefined,
+            monthly_expenses: profile!.monthlyExpenses,
+            dependents: profile!.familySize,
+            risk_appetite: profile!.riskAppetite,
+            goals: goals.map(g => ({
+              goal_type: g.label,
+              target_amount: whatIfParams.goalTargetAmounts?.[g.id] ?? g.corpusNeeded,
+              target_year: whatIfParams.goalTargetAges?.[g.id] ?? g.targetAge,
+              priority: 1,
+            })),
+            // What-If params
+            inflation_rate: whatIfParams.inflationRate / 100,
+            existing_savings: whatIfParams.existingSavings,
+            annual_increment_percent: whatIfParams.annualIncrementPercent / 100,
+            retirement_age: whatIfParams.retirementAge,
+            child_education_abroad: whatIfParams.childEducationAbroad,
+          }
+          const res = await api.post<BackendSimulateResponse>('/api/simulate', payload)
+          const mapped: SimulationResult[] = res.goals.map(goalResult => {
+            const result = mapBackendSimulation(goalResult)
+            const localGoal = goals.find(g => g.label === goalResult.goal_type)
+            if (localGoal) result.goalId = localGoal.id
+            return result
+          })
+          setSimulationResults(mapped)
+          setYearlyProjections(res.yearly_projections || [])
+          setIsOffline(false)
+        } catch {
+          // Backend unavailable
+          console.warn('Timeline: Simulation API unavailable, going offline')
+          setIsOffline(true)
+        } finally {
+          setIsSimulating(false)
         }
-        const res = await api.post<BackendSimulateResponse>('/api/simulate', payload)
-        const mapped: SimulationResult[] = res.goals.map(goalResult => {
-          const result = mapBackendSimulation(goalResult)
-          const localGoal = goals.find(g => g.label === goalResult.goal_type)
-          if (localGoal) result.goalId = localGoal.id
-          return result
-        })
-        setSimulationResults(mapped)
-        setYearlyProjections(res.yearly_projections || [])
-        setIsOffline(false)
-      } catch {
-        // Backend unavailable
-        console.warn('Timeline: Simulation API unavailable, going offline')
-        setIsOffline(true)
-      } finally {
-        setIsSimulating(false)
       }
-    }
-    runSim()
+      runSim()
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
   }, [JSON.stringify(profile), JSON.stringify(whatIfParams), JSON.stringify(goals), simulationMode])
 
   if (!profile) {
@@ -130,10 +176,11 @@ export default function LifeJourneyTimeline() {
   // Build sorted timeline events
   const events = simulationResults.map(result => {
     const goal = goals.find(g => g.id === result.goalId)
+    const effectiveAge = goal ? (whatIfParams.goalTargetAges?.[goal.id] ?? goal.targetAge) : (currentAge + 10)
     return {
       result,
       goal,
-      age: goal ? goal.targetAge : currentAge + 10,
+      age: effectiveAge,
       type: 'goal' as const
     }
   })
@@ -217,8 +264,6 @@ export default function LifeJourneyTimeline() {
                 />
               </div>
             )}
-
-            <SimulationProjectionChart />
             
             <div className="card overflow-hidden">
               <div className="flex items-start justify-between mb-4">
@@ -351,32 +396,44 @@ export default function LifeJourneyTimeline() {
 
                             {/* Financials */}
                             <div className={cn("flex flex-col gap-1 mb-5", isEven ? "sm:items-end" : "items-start")}>
-                              <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Corpus Needed</p>
-                              <p className="text-xl font-display font-bold text-brand-navy">{formatCurrency(result.corpusNeeded)}</p>
+                              <div className={cn("flex flex-col gap-1", isEven ? "sm:items-end" : "items-start")}>
+                                <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Corpus Needed</p>
+                                {isSimulating ? (
+                                  <p className="text-sm font-display font-bold text-gray-400 animate-pulse italic mt-1">Calculating...</p>
+                                ) : (
+                                  <p className="text-xl font-display font-bold text-brand-navy">{formatCurrency(result.corpusNeeded)}</p>
+                                )}
+                              </div>
+                              
+                              {/* Cost Today Slider */}
+                              <div className="w-full max-w-[180px] mt-2 opacity-80 hover:opacity-100 transition-opacity bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                <GoalTargetSlider goal={goal} currentAmount={whatIfParams.goalTargetAmounts?.[goal?.id || ''] ?? goal?.corpusNeeded ?? 0} isEven={isEven} />
+                              </div>
                             </div>
 
                             {/* Progress Bar */}
                             <div className="space-y-2 mb-5">
                               <div className="flex justify-between items-center text-xs">
                                 <span className="font-medium text-gray-600">Coverage</span>
-                                <span className={cn("font-bold text-sm", isGood ? "text-green-600" : "text-brand-orange")}>
-                                  {coverPct}%
+                                <span className={cn("font-bold text-sm", isSimulating ? "text-gray-400" : (isGood ? "text-green-600" : "text-brand-orange"))}>
+                                  {isSimulating ? "..." : `${coverPct}%`}
                                 </span>
                               </div>
                               <div className="h-2.5 w-full bg-gray-100 rounded-full overflow-hidden flex shadow-inner">
                                 <motion.div 
                                   className="h-full rounded-full" 
-                                  style={{ backgroundColor: catColor }}
+                                  style={{ backgroundColor: isSimulating ? '#e5e7eb' : catColor }}
                                   initial={{ width: 0 }}
-                                  whileInView={{ width: `${Math.min(coverPct, 100)}%` }}
-                                  viewport={{ once: true }}
-                                  transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
+                                  animate={{ width: isSimulating ? '100%' : `${Math.min(coverPct, 100)}%` }}
+                                  transition={{ duration: 1, ease: "easeOut" }}
                                 />
                               </div>
                               <div className="flex justify-between items-center text-[10px]">
-                                <span className="text-gray-500 font-medium">{formatCurrency(result.coveredAmount)} covered</span>
-                                <span className={cn("font-semibold", result.gap > 0 ? "text-red-500" : "text-green-500")}>
-                                  {result.gap > 0 ? `Gap: ${formatCurrency(result.gap)}` : 'Fully Covered'}
+                                <span className={cn("font-medium", isSimulating ? "text-gray-400 animate-pulse" : "text-gray-500")}>
+                                  {isSimulating ? "Calculating..." : `${formatCurrency(result.coveredAmount)} covered`}
+                                </span>
+                                <span className={cn("font-semibold", isSimulating ? "text-gray-400" : (result.gap > 0 ? "text-red-500" : "text-green-500"))}>
+                                  {isSimulating ? "..." : (result.gap > 0 ? `Gap: ${formatCurrency(result.gap)}` : 'Fully Covered')}
                                 </span>
                               </div>
                             </div>

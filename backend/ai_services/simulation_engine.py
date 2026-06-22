@@ -371,7 +371,12 @@ class SimulationEngine:
             ret_age = retirement_age_override or self.retirement_age
             target_year = current_year + (ret_age - user_age)
         else:
-            target_year = goal.target_year or (current_year + 10)
+            provided_target = goal.target_year or (current_year + 10)
+            # If the frontend sent an age (e.g., 55) instead of a calendar year (e.g., 2045), convert it
+            if provided_target < 2000:
+                target_year = current_year + (provided_target - user_age)
+            else:
+                target_year = provided_target
 
         years_remaining = max(1, target_year - current_year)
 

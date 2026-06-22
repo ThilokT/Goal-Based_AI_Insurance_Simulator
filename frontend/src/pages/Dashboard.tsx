@@ -15,7 +15,7 @@ const QUICK_ACTIONS = [
 ]
 
 export default function Dashboard() {
-  const { user, profile, goals, simulationResults, setActiveTab, productCount, setProductCount } = useAppStore()
+  const { user, profile, goals, simulationResults, setActiveTab, productCount, setProductCount, setIsProfileModalOpen } = useAppStore()
 
   // Fetch live product count on mount
   useEffect(() => {
@@ -127,14 +127,14 @@ export default function Dashboard() {
             <h3 className="font-display font-semibold text-brand-navy text-sm">Get started</h3>
           </div>
           <p className="text-xs text-gray-600 mb-4">
-            You have not set up your profile yet. Talk to the AI advisor or complete the onboarding wizard to generate your personalised Life Journey.
+            You have not set up your profile yet. Talk to the AI advisor or set up your profile directly to generate your personalised Life Journey.
           </p>
           <div className="flex gap-3">
             <button onClick={() => setActiveTab('chat')} className="btn-primary text-xs py-2 px-4">
               <MessageSquare size={13} /> Start AI chat
             </button>
-            <button onClick={() => setActiveTab('onboard')} className="btn-outline text-xs py-2 px-4">
-              Use wizard instead
+            <button onClick={() => setIsProfileModalOpen(true)} className="btn-outline text-xs py-2 px-4">
+              Setup Profile
             </button>
           </div>
         </div>

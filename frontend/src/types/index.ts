@@ -70,4 +70,6 @@ export interface WhatIfParams {
   inflationRate: number
   existingSavings: number
   annualIncrementPercent: number
+  goalTargetAges?: Record<string, number>
+  goalTargetAmounts?: Record<string, number>
 }

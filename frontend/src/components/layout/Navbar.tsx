@@ -6,8 +6,7 @@ import { cn } from '../../lib/utils'
 import ProfileModal from '../profile/ProfileModal'
 
 export default function Navbar() {
-  const { user, profile, logout, darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen } = useAppStore()
-  const [showProfileModal, setShowProfileModal] = useState(false)
+  const { user, profile, logout, darkMode, toggleDarkMode, setSidebarOpen, sidebarOpen, isProfileModalOpen, setIsProfileModalOpen } = useAppStore()
 
   return (
     <motion.header
@@ -58,7 +57,7 @@ export default function Navbar() {
           {user && (
             <div className="flex items-center gap-2 ml-1 pl-3 border-l border-gray-200">
               <button 
-                onClick={() => setShowProfileModal(true)}
+                onClick={() => setIsProfileModalOpen(true)}
                 title="Edit Profile"
                 className="w-8 h-8 rounded-full gradient-orange flex items-center justify-center shadow-sm hover:ring-2 hover:ring-brand-orange/50 transition-all cursor-pointer"
               >
@@ -79,7 +78,7 @@ export default function Navbar() {
           )}
         </div>
       </div>
-      <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
+      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
     </motion.header>
   )
 }

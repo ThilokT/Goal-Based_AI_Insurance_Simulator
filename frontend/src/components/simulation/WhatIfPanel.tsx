@@ -8,6 +8,7 @@ import type { SimulateRequest, BackendSimulateResponse } from '../../types/api'
 import { mapBackendSimulation } from '../../types/api'
 import { cn } from '../../lib/utils'
 import type { SimulationResult } from '../../types'
+import { runSimulation } from '../../mocks/simulation'
 
 function SliderRow({
   label, value, min, max, step = 1, unit = '',
@@ -36,7 +37,7 @@ function SliderRow({
 }
 
 export default function WhatIfPanel() {
-  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating } = useAppStore()
+  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating } = useAppStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Use chat context profile if available
@@ -58,8 +59,8 @@ export default function WhatIfPanel() {
       risk_appetite: activeProfile.riskAppetite,
       goals: activeGoals.map(g => ({
         goal_type: g.label,
-        target_amount: g.corpusNeeded,
-        target_year: g.targetAge,
+        target_amount: params.goalTargetAmounts?.[g.id] ?? g.corpusNeeded,
+        target_year: params.goalTargetAges?.[g.id] ?? g.targetAge,
         priority: 1,
       })),
       // ── What-If params wired to backend ──
@@ -80,6 +81,16 @@ export default function WhatIfPanel() {
         return result
       })
       setSimulationResults(mapped)
+      if (res.yearly_projections) {
+        setYearlyProjections(
+          res.yearly_projections.map((p: any) => ({
+            year: p.year,
+            age: p.age,
+            totalInvested: p.total_invested,
+            projectedCorpus: p.projected_corpus,
+          }))
+        )
+      }
       setIsOffline(false)
     } catch {
       // Fall back to offline
@@ -90,9 +101,12 @@ export default function WhatIfPanel() {
     }
   }, [activeProfile, activeGoals, setSimulationResults, setIsOffline, setIsSimulating])
 
-  function update(key: keyof typeof whatIfParams, value: number | boolean) {
-    const next = { ...whatIfParams, [key]: value }
+  function update(key: keyof typeof whatIfParams, value: number | boolean | Record<string, number>) {
+    const next = { ...whatIfParams, [key]: value } as typeof whatIfParams
     setWhatIfParams({ [key]: value })
+
+    // Set simulating to true immediately to show Calculating UI while dragging sliders
+    setIsSimulating(true)
 
     // Debounce API calls (500ms)
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -105,6 +119,11 @@ export default function WhatIfPanel() {
     }, 500)
   }
 
+  function updateGoalAge(goalId: string, age: number) {
+    const nextAges = { ...(whatIfParams.goalTargetAges || {}), [goalId]: age }
+    update('goalTargetAges', nextAges)
+  }
+
   function reset() {
     const defaults = {
       retirementAge: 60,
@@ -112,8 +131,17 @@ export default function WhatIfPanel() {
       inflationRate: 6,
       existingSavings: 500_000,
       annualIncrementPercent: 8,
+      goalTargetAges: {},
+      goalTargetAmounts: {},
     }
     setWhatIfParams(defaults)
+    
+    // Optimistic reset
+    if (activeProfile && activeGoals.length > 0) {
+      const { goals: offlineResults, yearlyProjections } = runSimulation(activeProfile as any, defaults, activeGoals)
+      setSimulationResults(offlineResults)
+      setYearlyProjections(yearlyProjections)
+    }
     if (activeProfile) {
       runApiSimulation(defaults).catch(() => {
         setIsOffline(true)
@@ -196,6 +224,28 @@ export default function WhatIfPanel() {
                 />
               </button>
             </div>
+
+            {activeGoals.length > 0 && (
+              <div className="pt-4 border-t border-gray-100">
+                <h4 className="text-xs font-semibold text-gray-900 mb-3">Goal Target Ages</h4>
+                <div className="space-y-4">
+                  {activeGoals.map(g => {
+                    const currentTarget = whatIfParams.goalTargetAges?.[g.id] ?? g.targetAge
+                    return (
+                      <SliderRow
+                        key={g.id}
+                        label={g.label}
+                        value={currentTarget}
+                        min={(activeProfile?.age || 18) + 1}
+                        max={85}
+                        unit=" yrs"
+                        onChange={v => updateGoalAge(g.id, v)}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
     </div>

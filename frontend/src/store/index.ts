@@ -122,6 +122,8 @@ interface AppState {
   toggleDarkMode: () => void
   activeTab: string
   setActiveTab: (t: string) => void
+  isProfileModalOpen: boolean
+  setIsProfileModalOpen: (v: boolean) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -502,6 +504,8 @@ export const useAppStore = create<AppState>()(
         inflationRate: 6,
         existingSavings: 500000,
         annualIncrementPercent: 8,
+        goalTargetAges: {},
+        goalTargetAmounts: {},
       },
       setWhatIfParams: (p) => set((state) => ({ 
         whatIfParams: { ...state.whatIfParams, ...p } 
@@ -529,6 +533,9 @@ export const useAppStore = create<AppState>()(
       toggleDarkMode: () => set(s => ({ darkMode: !s.darkMode })),
       activeTab: 'dashboard',
       setActiveTab: (activeTab) => set({ activeTab }),
+
+      isProfileModalOpen: false,
+      setIsProfileModalOpen: (isProfileModalOpen) => set({ isProfileModalOpen }),
     }),
     {
       name: 'lifemap-store',
