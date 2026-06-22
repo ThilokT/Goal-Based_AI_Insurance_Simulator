@@ -366,17 +366,14 @@ class SimulationEngine:
         """
         current_year = datetime.now().year
 
-        # For retirement goals, use the retirement age to determine target year
-        if goal.goal_type.lower() in ("retirement", "retirement_planning"):
-            ret_age = retirement_age_override or self.retirement_age
-            target_year = current_year + (ret_age - user_age)
+        normalized_type = goal.goal_type.lower().replace(" ", "_").strip()
+
+        provided_target = goal.target_year or (current_year + 10)
+        # If the frontend sent an age (e.g., 55) instead of a calendar year (e.g., 2045), convert it
+        if provided_target < 2000:
+            target_year = current_year + (provided_target - user_age)
         else:
-            provided_target = goal.target_year or (current_year + 10)
-            # If the frontend sent an age (e.g., 55) instead of a calendar year (e.g., 2045), convert it
-            if provided_target < 2000:
-                target_year = current_year + (provided_target - user_age)
-            else:
-                target_year = provided_target
+            target_year = provided_target
 
         years_remaining = max(1, target_year - current_year)
 
@@ -415,7 +412,7 @@ class SimulationEngine:
 
         # 3. Wealth Booster (only for ULIP-eligible goals)
         booster_fv = 0.0
-        if goal.goal_type.lower() in ULIP_ELIGIBLE_GOALS and years_remaining >= WEALTH_BOOSTER_START_YEAR:
+        if normalized_type in ULIP_ELIGIBLE_GOALS and years_remaining >= WEALTH_BOOSTER_START_YEAR:
             annual_sip = monthly_savings * 12
             booster_fv = self.wealth_booster_value(
                 annual_sip, adjusted_return, years_remaining
@@ -539,7 +536,8 @@ class SimulationEngine:
                     
                     # 3. Booster
                     booster_fv = 0.0
-                    if goal.goal_type.lower() in ULIP_ELIGIBLE_GOALS and year >= WEALTH_BOOSTER_START_YEAR:
+                    normalized_goal_type = goal.goal_type.lower().replace(" ", "_").strip()
+                    if normalized_goal_type in ULIP_ELIGIBLE_GOALS and year >= WEALTH_BOOSTER_START_YEAR:
                         booster_fv = self.wealth_booster_value(monthly_savings * 12, adjusted_return, year)
                         
                     # Invested computation
@@ -672,7 +670,7 @@ class SimulationEngine:
 # ── Utility: Get product recommendation for a goal ────────
 def get_product_for_goal(goal_type: str) -> dict:
     """Return the recommended ICICI product for a given goal type."""
-    key = goal_type.lower()
+    key = goal_type.lower().replace(" ", "_").strip()
     return GOAL_PRODUCT_MAP.get(key, {
         "name": "ICICI Pru Signature",
         "category": "ULIP",

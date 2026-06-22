@@ -185,13 +185,7 @@ export default function LifeJourneyTimeline() {
     }
   })
 
-  // Add Retirement Marker
-  events.push({
-    result: null as any,
-    goal: { id: 'retire', label: 'Retirement', icon: '🌴', targetAge: whatIfParams.retirementAge, corpusNeeded: 0, coveredBy: [] },
-    age: whatIfParams.retirementAge,
-    type: 'retirement' as const
-  })
+  // Note: Global Retirement Marker removed because Retirement age slider was removed
 
   // Sort chronologically
   events.sort((a, b) => a.age - b.age)

@@ -170,12 +170,6 @@ export default function WhatIfPanel() {
 
           <div className="space-y-5">
             <SliderRow
-              label="Retirement age"
-              value={whatIfParams.retirementAge}
-              min={45} max={70}
-              onChange={v => update('retirementAge', v)}
-            />
-            <SliderRow
               label="Inflation assumption"
               value={whatIfParams.inflationRate}
               min={4} max={12} unit="%"
