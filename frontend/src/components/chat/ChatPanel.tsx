@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, Bot, User, Sparkles, RotateCcw, WifiOff, MessageSquare, Plus, Edit2, Trash2, Check, X } from 'lucide-react'
+import { Send, Loader2, Bot, User, Sparkles, RotateCcw, WifiOff, MessageSquare, Plus, Edit2, Trash2, Check, X, ChevronUp, ChevronDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../../store'
 import { streamChat, ApiError } from '../../lib/apiClient'
@@ -108,6 +108,7 @@ export default function ChatPanel() {
   const [isExtractingTop, setIsExtractingTop] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [useBackend, setUseBackend] = useState(true)
+  const [showChatVariables, setShowChatVariables] = useState(true)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editChatTitle, setEditChatTitle] = useState('')
   const [hoveredChatId, setHoveredChatId] = useState<string | null>(null)
@@ -509,22 +510,33 @@ export default function ChatPanel() {
                 </div>
                 {currentChatContext && (
                   <div className="mt-3 text-[11px] text-gray-500 bg-brand-cream/30 p-2.5 rounded-lg border border-brand-orange/20 text-left w-full max-w-[280px]">
-                    <p className="font-semibold text-brand-navy mb-1.5 flex items-center gap-1">
-                      <Sparkles size={11} className="text-brand-orange" />
-                      Isolated Chat Variables
-                    </p>
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-                      <div><span className="text-gray-400">Age:</span> {currentChatContext.profile.age || '—'}</div>
-                      <div><span className="text-gray-400">Income:</span> {currentChatContext.profile.income ? `₹${(currentChatContext.profile.income * 12).toLocaleString()}` : '—'}</div>
-                      <div><span className="text-gray-400">City:</span> {currentChatContext.profile.city || '—'}</div>
-                      <div><span className="text-gray-400">Dependents:</span> {currentChatContext.profile.familySize ?? '—'}</div>
+                    <div 
+                      className={`font-semibold text-brand-navy flex items-center justify-between cursor-pointer select-none ${showChatVariables ? 'mb-1.5' : ''}`}
+                      onClick={() => setShowChatVariables(!showChatVariables)}
+                      title="Toggle variables visibility"
+                    >
+                      <span className="flex items-center gap-1">
+                        <Sparkles size={11} className="text-brand-orange" />
+                        Isolated Chat Variables
+                      </span>
+                      {showChatVariables ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronUp size={13} className="text-gray-400" />}
                     </div>
-                    <div className="mt-1.5 pt-1.5 border-t border-brand-orange/10">
-                      <span className="text-gray-400">Goals:</span>{' '}
-                      {currentChatContext.goals && currentChatContext.goals.length > 0 
-                        ? currentChatContext.goals.map((g: any) => `${g.label}`).join(', ') 
-                        : 'None identified'}
-                    </div>
+                    {showChatVariables && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                          <div><span className="text-gray-400">Age:</span> {currentChatContext.profile.age || '—'}</div>
+                          <div><span className="text-gray-400">Income:</span> {currentChatContext.profile.income ? `₹${(currentChatContext.profile.income * 12).toLocaleString()}` : '—'}</div>
+                          <div><span className="text-gray-400">City:</span> {currentChatContext.profile.city || '—'}</div>
+                          <div><span className="text-gray-400">Dependents:</span> {currentChatContext.profile.familySize ?? '—'}</div>
+                        </div>
+                        <div className="mt-1.5 pt-1.5 border-t border-brand-orange/10">
+                          <span className="text-gray-400">Goals:</span>{' '}
+                          {currentChatContext.goals && currentChatContext.goals.length > 0 
+                            ? currentChatContext.goals.map((g: any) => `${g.label}`).join(', ') 
+                            : 'None identified'}
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
                 )}
               </div>

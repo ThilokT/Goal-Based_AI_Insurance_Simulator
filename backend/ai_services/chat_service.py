@@ -467,7 +467,8 @@ class ChatService:
             for g in data.get("goals", []):
                 try:
                     goals.append(FinancialGoal(**g))
-                except Exception:
+                except Exception as e:
+                    console.print(f"[red]⚠️ Skipping malformed goal: {g} - {e}[/red]")
                     continue  # Skip malformed goals
             data["goals"] = goals
 

@@ -72,9 +72,9 @@ class ScrapedProduct(BaseModel):
 class FinancialGoal(BaseModel):
     """A single financial goal extracted from user conversation."""
     goal_type: str = Field(..., description="e.g., 'retirement', 'child_education', 'home_purchase'")
-    target_amount: Optional[float] = Field(None, gt=0, description="Target corpus in INR")
+    target_amount: Optional[float] = Field(None, description="Target corpus in INR")
     target_year: Optional[int] = Field(None, description="Year by which goal should be achieved")
-    priority: int = Field(default=1, ge=1, le=5, description="1=highest, 5=lowest")
+    priority: Optional[int] = Field(1, description="1=highest, 5=lowest")
     monthly_contribution: Optional[float] = Field(None, description="Monthly savings towards this goal")
     notes: Optional[str] = None
 
