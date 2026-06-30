@@ -9,11 +9,15 @@ import json
 from typing import AsyncGenerator
 from ai_services.chat_service import ChatService
 from ai_services.vectorstore import ProductVectorStore
+from app.services.input_guard import InputGuard
+from app.services.output_sanitizer import OutputSanitizer
 
 logger = logging.getLogger("lifemap.chat")
 
 # Singleton instance — shared across requests (has per-user memory internally)
 _chat_service = None
+_input_guard = InputGuard()
+_output_sanitizer = OutputSanitizer()
 
 
 def get_chat_service() -> ChatService:
@@ -38,6 +42,14 @@ async def stream_chat_response(
         - data: {"type": "done", "content": "..."} — final full response
         - data: {"type": "error", "message": "..."} — on failure
     """
+    blocked_reason = _input_guard.check(message)
+    if blocked_reason:
+        logger.warning(f"Message blocked by InputGuard: {blocked_reason}")
+        error_message = "I can only help with insurance questions."
+        yield f"data: {json.dumps({'type': 'token', 'content': error_message})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'content': error_message})}\n\n"
+        return
+
     chat = get_chat_service()
     
     if history is not None:
@@ -79,6 +91,9 @@ async def stream_chat_response(
         if not full_response:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Empty response from AI'})}\n\n"
             return
+
+        # Sanitize the full response before sending the final 'done' event
+        full_response = _output_sanitizer.sanitize(full_response)
 
         # Final done event with full response
         yield f"data: {json.dumps({'type': 'done', 'content': full_response})}\n\n"

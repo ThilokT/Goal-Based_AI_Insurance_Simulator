@@ -50,25 +50,83 @@ console = Console()
 #   56-65:   45% / 55%
 #   66+:     35% / 65%
 
-# Net returns after 1.35% FMC deduction
-EQUITY_RETURN_NET = 0.11        # ~12.35% gross - 1.35% FMC
-BALANCED_RETURN_NET = 0.09      # ~10.35% gross - 1.35% FMC
-DEBT_RETURN_NET = 0.07          # ~8.35% gross - 1.35% FMC
+# ── ICICI Pru Signature: 5-Year Historical Avg Returns ─────
+# Source: iciciprulife.com/fund-performance (as on June 25, 2026)
+#
+# Equity (avg of 8 mature funds with 5yr data):
+#   Focus 50 (8.24%), Bluechip (9.30%), Maximiser V (10.57%),
+#   Maximise India (10.90%), India Growth (11.05%),
+#   Multi Cap Growth (11.46%), Opportunities (12.22%),
+#   Value Enhancer (14.19%)  →  Avg = 10.99%
+#
+# Balanced (avg of 2 funds with 5yr data):
+#   Active Asset Allocation (7.63%), Multi Cap Balanced (8.81%)
+#   →  Avg = 8.22%
+#
+# Debt (avg of 3 funds with 5yr data):
+#   Income Fund (4.77%), Money Market (5.59%),
+#   Secure Opportunities (4.80%)  →  Avg = 5.05%
+
+SIGNATURE_EQUITY_5YR = 0.1099   # 10.99% — avg of 8 equity funds
+SIGNATURE_BALANCED_5YR = 0.0822 # 8.22%  — avg of 2 balanced funds
+SIGNATURE_DEBT_5YR = 0.0505     # 5.05%  — avg of 3 debt funds
 
 # Risk appetite → blended return by investment horizon
+# Anchored to the 5-year historical averages above
 RETURN_MATRIX = {
     # (risk_appetite, horizon_bucket) → blended_annual_return
-    ("conservative", "short"):  0.065,    # Mostly debt: Income Fund + FD
-    ("conservative", "medium"): 0.070,    # 25% equity, 75% debt
-    ("conservative", "long"):   0.075,    # 30% equity, 70% debt
+    ("conservative", "short"):  SIGNATURE_DEBT_5YR,                # 5.05% — pure debt
+    ("conservative", "medium"): SIGNATURE_DEBT_5YR + 0.005,        # 5.55% — slight equity tilt
+    ("conservative", "long"):   SIGNATURE_DEBT_5YR + 0.010,        # 6.05% — small equity allocation
 
-    ("moderate", "short"):      0.070,    # 40% equity, 60% debt
-    ("moderate", "medium"):     0.085,    # 55% equity, 45% debt (Life Cycle age 46-55)
-    ("moderate", "long"):       0.090,    # 65% equity, 35% debt (Life Cycle age 36-45)
+    ("moderate", "short"):      SIGNATURE_BALANCED_5YR - 0.010,    # 7.22% — cautious balanced
+    ("moderate", "medium"):     SIGNATURE_BALANCED_5YR,            # 8.22% — balanced avg
+    ("moderate", "long"):       SIGNATURE_BALANCED_5YR + 0.005,    # 8.72% — balanced with equity tilt
 
-    ("aggressive", "short"):    0.080,    # 60% equity, 40% debt
-    ("aggressive", "medium"):   0.100,    # 75% equity, 25% debt (Life Cycle age 26-35)
-    ("aggressive", "long"):     0.110,    # 80% equity, 20% debt (Focus 50 / Multi Cap Growth)
+    ("aggressive", "short"):    SIGNATURE_EQUITY_5YR - 0.020,      # 8.99% — equity with debt cushion
+    ("aggressive", "medium"):   SIGNATURE_EQUITY_5YR - 0.010,      # 9.99% — mostly equity
+    ("aggressive", "long"):     SIGNATURE_EQUITY_5YR,              # 10.99% — full equity avg
+}
+
+# ── ICICI Pru Easy Retirement: 5-Year Historical Avg Returns ──
+# Source: iciciprulife.com/fund-performance (as on June 25, 2026)
+# No equity funds available for this pension product.
+# Debt: Easy Retirement Secure Fund → 4.66%
+# Balanced: Easy Retirement Balanced Fund → 6.05%
+
+RETIREMENT_BALANCED_5YR = 0.0605  # 6.05% — single balanced fund
+RETIREMENT_DEBT_5YR = 0.0466      # 4.66% — single debt fund
+
+RETIREMENT_RETURN_MATRIX = {
+    ("conservative", "short"):  RETIREMENT_DEBT_5YR,                # 4.66%
+    ("conservative", "medium"): RETIREMENT_DEBT_5YR,                # 4.66%
+    ("conservative", "long"):   RETIREMENT_DEBT_5YR + 0.005,        # 5.16%
+
+    ("moderate", "short"):      0.0536,                             # 5.36% — blend
+    ("moderate", "medium"):     0.0536,                             # 5.36% — blend
+    ("moderate", "long"):       RETIREMENT_BALANCED_5YR,            # 6.05%
+
+    ("aggressive", "short"):    RETIREMENT_BALANCED_5YR - 0.005,    # 5.55%
+    ("aggressive", "medium"):   RETIREMENT_BALANCED_5YR,            # 6.05%
+    ("aggressive", "long"):     RETIREMENT_BALANCED_5YR,            # 6.05%
+}
+
+# ── Category-Specific Returns (Non-ULIP Products) ──────────
+# These products don't have market-linked funds.
+CATEGORY_RETURNS = {
+    "Term Insurance": 0.0,       # Pure protection, no investment
+    "Health Insurance": 0.0,     # Pure protection, no investment
+    "Guaranteed Income": 0.06,   # ~6% (ICICI Pru Gold participating return)
+    "Endowment": 0.065,          # ~6.5% (ICICI Pru Guaranteed Wealth Protector)
+}
+
+# ── Product → Return Matrix Mapping ────────────────────────
+# Each ULIP-based product gets its own return matrix.
+# Non-ULIP products use flat rates from CATEGORY_RETURNS.
+PRODUCT_RETURN_MATRICES = {
+    "icici-pru-signature":       RETURN_MATRIX,
+    "icici-pru-easy-retirement": RETIREMENT_RETURN_MATRIX,
+    # Smart Kid data pending — falls back to RETURN_MATRIX
 }
 
 # Wealth Booster: 3.25% of average fund value, every 5 years from year 10
@@ -318,7 +376,7 @@ class SimulationEngine:
 
         return float(corpus)
 
-    # ── Risk-Aware Return Rate ────────────────────────────
+    # ── Product-Aware Return Rate ─────────────────────────
 
     def _get_adjusted_return(
         self,
@@ -328,23 +386,33 @@ class SimulationEngine:
         return_override: Optional[float] = None,
     ) -> float:
         """
-        Get blended return rate based on risk appetite, goal type, and horizon.
-        Uses the brochure-backed RETURN_MATRIX.
+        Get return rate based on the recommended product's category and
+        its product-specific 5-year historical fund data.
+
+        - ULIP products: Use product-specific return matrix (risk × horizon)
+        - Non-ULIP products: Use flat category return from CATEGORY_RETURNS
         """
         if return_override is not None:
             return return_override
 
-        # Conservative goals always get risk-free rate
-        conservative_goals = {"protection", "health", "family_security", "debt_repayment", "family_protection"}
-        if goal_type.lower() in conservative_goals:
-            return self.risk_free_rate
+        # Lookup the recommended product for this goal type
+        product = get_product_for_goal(goal_type)
+        category = product.get("category", "ULIP")
+        product_id = product.get("id", "icici-pru-signature")
 
+        # Non-ULIP categories get flat returns (no market-linked funds)
+        if category in CATEGORY_RETURNS:
+            return CATEGORY_RETURNS[category]
+
+        # ULIP-based products: use product-specific return matrix
         bucket = _horizon_bucket(years)
         appetite = risk_appetite.lower() if risk_appetite else "moderate"
         if appetite not in ("conservative", "moderate", "aggressive"):
             appetite = "moderate"
 
-        return RETURN_MATRIX.get((appetite, bucket), self.expected_return)
+        # Get the product-specific matrix, fallback to Signature matrix
+        matrix = PRODUCT_RETURN_MATRICES.get(product_id, RETURN_MATRIX)
+        return matrix.get((appetite, bucket), self.expected_return)
 
     # ── Single Goal Simulation ────────────────────────────
 
