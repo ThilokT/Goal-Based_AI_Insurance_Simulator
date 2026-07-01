@@ -234,11 +234,8 @@ export default function ChatPanel() {
     }
 
     if (!accumulated) {
-      // Mock fallback
-      for await (const chunk of streamChatResponse(userMsg, turn, profile)) {
-        accumulated += chunk
-        updateLastMessage(accumulated)
-      }
+      accumulated = "Sorry, I encountered an error connecting to the AI backend. Please try again or check the server."
+      updateLastMessage(accumulated)
     }
     setIsStreaming(false)
   }
