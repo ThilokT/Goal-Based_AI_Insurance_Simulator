@@ -12,7 +12,7 @@ logger = logging.getLogger("lifemap.scheduler")
 scheduler = AsyncIOScheduler()
 
 
-def monthly_product_refresh():
+async def monthly_product_refresh():
     """
     Monthly job: re-scrape products and refresh vector embeddings.
 
@@ -24,15 +24,16 @@ def monthly_product_refresh():
     try:
         # Step 1: Run the data pipeline (scrape + validate + upsert)
         from ai_services.pipeline import DataPipeline
-        pipeline = DataPipeline(use_seed=True)  # Use seed data as fallback
-        data = pipeline.load_seed_data()
-        validated = pipeline.validate_products(data)
-        logger.info(f"Pipeline: validated {len(validated)} products")
+        pipeline = DataPipeline(use_seed=False)  # Run live scraper and PDF extraction
+        summary = await pipeline.run()
+        logger.info(f"Pipeline summary: {summary}")
+        validated = pipeline.validated_products
 
         # Step 2: Re-index vector store
-        from ai_services.vectorstore import ProductVectorStore
-        store = ProductVectorStore()
-        count = store.index_products(validated)
+        from ai_services.vectorstore import get_vectorstore
+        store = get_vectorstore()
+        product_dicts = [p.model_dump(mode="json") for p in validated]
+        count = store.index_products(product_dicts)
         logger.info(f"VectorStore: indexed {count} products")
 
         logger.info("Monthly product refresh completed successfully")

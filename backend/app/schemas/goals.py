@@ -7,7 +7,7 @@ from datetime import datetime
 class GoalRequest(BaseModel):
     goal_type: str = Field(..., description="e.g., 'retirement', 'child_education', 'home_purchase'")
     target_amount: float = Field(..., gt=0)
-    target_year: int = Field(..., ge=2025)
+    target_year: int = Field(..., ge=0)
     priority: int = Field(default=1, ge=1, le=5)
     monthly_contribution: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None

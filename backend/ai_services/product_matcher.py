@@ -14,7 +14,7 @@ from typing import Optional
 from rich.console import Console
 
 from ai_services.models import FinancialGoal, ProductMatch
-from ai_services.vectorstore import ProductVectorStore
+from ai_services.vectorstore import ProductVectorStore, get_vectorstore
 
 console = Console()
 
@@ -56,7 +56,7 @@ class ProductMatcher:
             vectorstore: An existing ProductVectorStore instance.
                          If None, creates a new one (loading from disk).
         """
-        self.vectorstore = vectorstore or ProductVectorStore()
+        self.vectorstore = vectorstore or get_vectorstore()
 
     def _goal_to_query(self, goal: FinancialGoal) -> str:
         """
@@ -104,7 +104,7 @@ class ProductMatcher:
     def match_products(
         self,
         goals: list[FinancialGoal],
-        n_results_per_goal: int = 3,
+        n_results_per_goal: int = 15,
     ) -> list[ProductMatch]:
         """
         Find the best product matches for a list of financial goals.
@@ -133,17 +133,35 @@ class ProductMatcher:
                 n_results=n_results_per_goal,
             )
 
+            # Group chunks by product_id to calculate density
+            product_chunks = {}
             for match in results:
-                if match.product_id in all_matches:
+                if match.product_id not in product_chunks:
+                    product_chunks[match.product_id] = []
+                product_chunks[match.product_id].append(match)
+
+            for product_id, chunks in product_chunks.items():
+                # Find the best chunk score
+                best_chunk = max(chunks, key=lambda c: c.similarity_score)
+                density_score = best_chunk.similarity_score
+
+                # Add a density bonus for multiple matching chunks
+                if len(chunks) > 1:
+                    density_bonus = (len(chunks) - 1) * 0.05
+                    density_score = min(0.99, density_score + density_bonus)
+                
+                best_chunk.similarity_score = density_score
+
+                if product_id in all_matches:
                     # Merge: keep higher score, accumulate matched goals
-                    existing = all_matches[match.product_id]
-                    if match.similarity_score > existing.similarity_score:
-                        existing.similarity_score = match.similarity_score
+                    existing = all_matches[product_id]
+                    if density_score > existing.similarity_score:
+                        existing.similarity_score = density_score
                     if goal.goal_type not in existing.matched_goals:
                         existing.matched_goals.append(goal.goal_type)
                 else:
-                    match.matched_goals = [goal.goal_type]
-                    all_matches[match.product_id] = match
+                    best_chunk.matched_goals = [goal.goal_type]
+                    all_matches[product_id] = best_chunk
 
         # Sort by similarity score (descending)
         sorted_matches = sorted(
@@ -165,7 +183,7 @@ class ProductMatcher:
     def match_from_profile(
         self,
         goals: list[FinancialGoal],
-        n_results_per_goal: int = 3,
+        n_results_per_goal: int = 15,
     ) -> list[ProductMatch]:
         """
         Convenience wrapper: extract goals from a UserProfile and match.

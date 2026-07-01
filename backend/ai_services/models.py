@@ -42,6 +42,7 @@ class ScrapedProduct(BaseModel):
     source_url: str
     last_scraped: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = True
+    raw_chunks: list[str] = Field(default_factory=list, description="Raw text chunks from the full PDF for semantic RAG")
 
     class Config:
         json_schema_extra = {
@@ -71,9 +72,9 @@ class ScrapedProduct(BaseModel):
 class FinancialGoal(BaseModel):
     """A single financial goal extracted from user conversation."""
     goal_type: str = Field(..., description="e.g., 'retirement', 'child_education', 'home_purchase'")
-    target_amount: float = Field(..., gt=0, description="Target corpus in INR")
-    target_year: int = Field(..., description="Year by which goal should be achieved")
-    priority: int = Field(default=1, ge=1, le=5, description="1=highest, 5=lowest")
+    target_amount: Optional[float] = Field(None, description="Target corpus in INR")
+    target_year: Optional[int] = Field(None, description="Year by which goal should be achieved")
+    priority: Optional[int] = Field(1, description="1=highest, 5=lowest")
     monthly_contribution: Optional[float] = Field(None, description="Monthly savings towards this goal")
     notes: Optional[str] = None
 
@@ -106,12 +107,21 @@ class SimulationResult(BaseModel):
     expected_return: float
 
 
+class YearlyProjection(BaseModel):
+    """Year-by-year trajectory of the simulation across all goals."""
+    year: int
+    age: int
+    total_invested: float
+    projected_corpus: float
+
+
 class MultiGoalSimulationResult(BaseModel):
     """Aggregated simulation output for all user goals."""
     user_age: int
     total_monthly_savings_required: float
     total_gap: float
     goals: list[SimulationResult]
+    yearly_projections: list[YearlyProjection] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

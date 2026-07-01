@@ -11,6 +11,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+import httpx
 
 from playwright.async_api import async_playwright, Page, Browser
 from rich.console import Console
@@ -22,12 +23,7 @@ console = Console()
 
 # ── Category URL mapping ──────────────────────────────────
 CATEGORY_URLS = {
-    ProductCategory.TERM: "https://www.iciciprulife.com/term-insurance-plans.html",
-    ProductCategory.ULIP: "https://www.iciciprulife.com/ulip-plans.html",
-    ProductCategory.SAVINGS: "https://www.iciciprulife.com/savings-plans.html",
-    ProductCategory.RETIREMENT: "https://www.iciciprulife.com/retirement-pension-plans.html",
-    ProductCategory.CHILD: "https://www.iciciprulife.com/child-insurance-plans.html",
-    ProductCategory.HEALTH: "https://www.iciciprulife.com/health-insurance-plans.html",
+    ProductCategory.OTHER: "https://www.iciciprulife.com/insurance-plans/buy-life-insurance-online.html",
 }
 
 # ── CSS Selectors (ADAPT THESE to the actual site) ───────
@@ -35,12 +31,12 @@ CATEGORY_URLS = {
 # inspecting the actual ICICI Pru website
 SELECTORS = {
     "product_cards": ".product-card, .plan-card, [class*='product']",
-    "product_name": "h2, h3, .product-title, .plan-name",
-    "product_link": "a[href*='insurance'], a[href*='plan']",
+    "product_name": "h1, h2, h3, .product-title, .plan-name",
+    "product_link": "a:has-text('Know More')",
     "description": ".product-description, .plan-desc, .overview p",
     "features_list": ".key-features li, .features-list li, .plan-features li",
     "eligibility_table": ".eligibility-table tr, .plan-details tr",
-    "brochure_link": "a[href*='.pdf'], a[href*='brochure']",
+    "brochure_link": "a:has-text('Brochure'), a[download], a[href*='.pdf']",
 }
 
 
@@ -73,6 +69,7 @@ class ICICIPruScraper:
                 "Chrome/125.0.0.0 Safari/537.36"
             ),
             viewport={"width": 1920, "height": 1080},
+            accept_downloads=True,
         )
         page = await context.new_page()
         return page
@@ -191,13 +188,30 @@ class ICICIPruScraper:
                         key = re.sub(r'\s+', '_', key)
                         eligibility[key] = val
 
-            # ── Brochure URL ──────────────────────────────
-            brochure_url = None
-            brochure_el = await page.query_selector(SELECTORS["brochure_link"])
-            if brochure_el:
-                brochure_url = await brochure_el.get_attribute("href")
-                if brochure_url and not brochure_url.startswith("http"):
-                    brochure_url = f"https://www.iciciprulife.com{brochure_url}"
+            # ── Brochure Download ──────────────────────────────
+            brochure_url = "Downloaded natively via Playwright"
+            brochure_url = "Downloaded natively via Playwright"
+            
+            try:
+                locator = page.locator("a:has-text('Brochure'), a:has-text('Download'), a[download], a[href*='.pdf']")
+                if await locator.count() > 0:
+                    clean_name = re.sub(r'[^a-zA-Z0-9_-]', '_', product_name.lower().replace(' ', '_'))
+                    brochure_path = Path(__file__).parent.parent / "data" / "brochures" / f"{clean_name}.pdf"
+                    brochure_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    async with page.expect_download(timeout=15000) as download_info:
+                        # Force click bypasses visibility checks and prevents the 30s hang
+                        await locator.first.click(timeout=5000, force=True)
+                    
+                    download = await download_info.value
+                    await download.save_as(str(brochure_path))
+                    console.print(f"  [green]⬇️ Downloaded native brochure: {brochure_path.name}[/green]")
+                else:
+                    brochure_url = None
+            except Exception as e:
+                # We catch timeouts and safely continue so the pipeline doesn't crash
+                console.print(f"  [yellow]⚠️ Brochure not found or download timed out for {product_name}[/yellow]")
+                brochure_url = None
 
             # ── Build & Validate ──────────────────────────
             product = ScrapedProduct(

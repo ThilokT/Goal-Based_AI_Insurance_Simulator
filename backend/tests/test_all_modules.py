@@ -11,7 +11,7 @@ from ai_services.simulation_engine import SimulationEngine
 from ai_services.whatif_engine import WhatIfEngine
 from ai_services.ranking_service import RankingService
 from ai_services.guardrails import Guardrails
-from ai_services.vectorstore import ProductVectorStore
+from ai_services.vectorstore import get_vectorstore
 from ai_services.product_matcher import ProductMatcher
 from ai_services.models import WhatIfScenario
 
@@ -162,7 +162,7 @@ test("fallback utility", test_fallback_utility)
 print("\n=== 5. VectorStore & Product Matcher ===")
 
 def test_vectorstore_search():
-    store = ProductVectorStore()
+    store = get_vectorstore()
     results = store.search_products("child education savings plan", n_results=3)
     assert len(results) > 0
     assert results[0].similarity_score > 0.5

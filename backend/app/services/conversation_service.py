@@ -26,7 +26,7 @@ class ConversationService:
         )
         return response.data or []
 
-    def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
+    def get_conversation(self, conversation_id: str, user_id: str, limit: Optional[int] = None, offset: Optional[int] = None) -> Optional[dict]:
         """Get a conversation with all its messages."""
         # Get conversation
         conv_response = (
@@ -41,17 +41,26 @@ class ConversationService:
             return None
 
         # Get messages
-        msg_response = (
+        query = (
             self.client.table("messages")
             .select("*")
             .eq("conversation_id", conversation_id)
-            .order("created_at")
-            .execute()
+            .order("created_at", desc=False)
         )
+        
+        if limit is not None:
+            # Supabase uses zero-indexed ranges: .range(start, end) inclusive
+            start = offset or 0
+            end = start + limit - 1
+            query = query.range(start, end)
+            
+        msg_response = query.execute()
+        
+        messages = msg_response.data or []
 
         return {
             "conversation": conv_response.data,
-            "messages": msg_response.data or [],
+            "messages": messages,
         }
 
     def create_conversation(self, user_id: str, title: str = "New Conversation") -> dict:
@@ -96,6 +105,12 @@ class ConversationService:
         """Update the extracted context for a conversation."""
         self.client.table("conversations").update(
             {"extracted_context": context}
+        ).eq("id", conversation_id).execute()
+
+    def update_title(self, conversation_id: str, title: str) -> None:
+        """Update the conversation title."""
+        self.client.table("conversations").update(
+            {"title": title}
         ).eq("id", conversation_id).execute()
 
     def delete_conversation(self, conversation_id: str, user_id: str) -> bool:

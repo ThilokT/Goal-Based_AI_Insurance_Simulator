@@ -1,8 +1,8 @@
 """
 Conversations router — CRUD for chat sessions.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from app.schemas.chat import ConversationResponse, ConversationDetailResponse, MessageResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
+from app.schemas.chat import ConversationResponse, ConversationDetailResponse, MessageResponse, ConversationRenameRequest
 from app.services.conversation_service import ConversationService
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limiter import limiter, CRUD_RATE_LIMIT
@@ -36,11 +36,13 @@ async def list_conversations(
 async def get_conversation(
     request: Request,
     conversation_id: str,
+    limit: int = Query(None, description="Number of messages to return"),
+    offset: int = Query(None, description="Offset for pagination"),
     user: dict = Depends(get_current_user),
 ):
     """Get a conversation with all messages."""
     service = ConversationService()
-    result = service.get_conversation(conversation_id, user["user_id"])
+    result = service.get_conversation(conversation_id, user["user_id"], limit=limit, offset=offset)
 
     if not result:
         raise HTTPException(
@@ -90,3 +92,51 @@ async def delete_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found",
         )
+
+@router.patch(
+    "/{conversation_id}",
+    response_model=ConversationResponse,
+    summary="Rename a conversation",
+)
+@limiter.limit(CRUD_RATE_LIMIT)
+async def rename_conversation(
+    request: Request,
+    conversation_id: str,
+    body: ConversationRenameRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Rename a conversation."""
+    service = ConversationService()
+    existing = service.get_conversation(conversation_id, user["user_id"])
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+    service.update_title(conversation_id, body.title)
+    updated = service.get_conversation(conversation_id, user["user_id"])
+    return ConversationResponse(**updated["conversation"])
+
+@router.put(
+    "/{conversation_id}/context",
+    response_model=dict,
+    summary="Overwrite conversation context",
+)
+@limiter.limit(CRUD_RATE_LIMIT)
+async def update_conversation_context(
+    request: Request,
+    conversation_id: str,
+    context: dict,
+    user: dict = Depends(get_current_user),
+):
+    """Overwrite the isolated context for this chat."""
+    service = ConversationService()
+    existing = service.get_conversation(conversation_id, user["user_id"])
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+    service.update_context(conversation_id, context)
+    return {"status": "success", "context": context}
+

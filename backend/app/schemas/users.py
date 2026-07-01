@@ -23,7 +23,7 @@ class UserProfileResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     full_name: Optional[str] = None
     age: Optional[int] = Field(None, ge=18, le=100)
-    annual_income: Optional[float] = Field(None, gt=0)
+    annual_income: Optional[float] = Field(None, ge=0)
     monthly_expenses: Optional[float] = Field(None, ge=0)
     existing_coverage: Optional[float] = Field(None, ge=0)
     dependents: Optional[int] = Field(None, ge=0)

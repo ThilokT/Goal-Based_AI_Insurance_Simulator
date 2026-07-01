@@ -76,7 +76,8 @@ class DataPipeline:
         """Run the Playwright scraper and return raw product dicts."""
         try:
             from ai_services.scraper import ICICIPruScraper
-            scraper = ICICIPruScraper(headless=True)
+            # Running headed so we can see what Playwright is doing
+            scraper = ICICIPruScraper(headless=False)
             products = await scraper.scrape_all()
             scraper.save_to_json(str(SCRAPED_DATA_PATH))
             return [p.model_dump(mode="json") for p in products]
@@ -166,11 +167,14 @@ class DataPipeline:
         Transform a validated ScrapedProduct into a flat dict
         suitable for Supabase insert.
         """
+        # Generate a product_id if product_code is missing
+        pid = product.product_code if product.product_code else product.product_name.lower().replace(" ", "-").replace("/", "")
+        
         return {
-            "product_name": product.product_name,
+            "product_id": pid,
+            "name": product.product_name,
             "product_code": product.product_code,
             "category": product.category.value,
-            "sub_category": product.sub_category,
             "description": product.description,
             "features": json.dumps(
                 [f.model_dump() for f in product.features], ensure_ascii=False
@@ -204,7 +208,7 @@ class DataPipeline:
             record = self._to_db_record(product)
             try:
                 client.table(table).upsert(
-                    record, on_conflict="product_code"
+                    record, on_conflict="product_id"
                 ).execute()
                 results["inserted"] += 1
             except Exception as e:
@@ -235,18 +239,37 @@ class DataPipeline:
         # Step 1: Load raw data
         if self.use_seed:
             self.raw_products = self.load_seed_data()
+            validated = self.validate_products(self.raw_products)
         else:
-            self.raw_products = await self.load_scraped_data()
+            # Step 1.5: Extract deeply from downloaded/manual PDFs
+            from ai_services.pdf_extractor import PDFExtractor
+            extractor = PDFExtractor()
+            brochure_dir = Path(__file__).parent.parent / "data" / "brochures"
+            
+            pdf_products = []
+            if brochure_dir.exists():
+                console.print(f"\n[bold cyan]📚 Processing PDFs in {brochure_dir.name}...[/bold cyan]")
+                for pdf_file in brochure_dir.glob("*.pdf"):
+                    product = extractor.extract_product_from_pdf(str(pdf_file))
+                    if product:
+                        pdf_products.append(product)
+            
+            validated = pdf_products
+            self.raw_products = [p.model_dump(mode="json") for p in pdf_products]
+            self.validated_products = validated
 
-        if not self.raw_products:
-            console.print("[red]❌ No data to process. Pipeline aborted.[/red]")
+        if not validated:
+            console.print("[red]❌ No valid products to process. Pipeline aborted.[/red]")
             return {"status": "error", "message": "No data loaded"}
-
-        # Step 2: Validate
-        validated = self.validate_products(self.raw_products)
 
         # Step 3: Upsert to DB
         db_result = self.upsert_to_supabase(validated)
+
+        # Step 4: Index to VectorStore
+        from ai_services.vectorstore import get_vectorstore
+        store = get_vectorstore()
+        product_dicts = [p.model_dump(mode="json") for p in validated]
+        indexed_count = store.index_products(product_dicts)
 
         # Summary
         summary = {
@@ -255,6 +278,7 @@ class DataPipeline:
             "validated_count": len(validated),
             "failed_validations": len(self.failed_validations),
             "db_result": db_result,
+            "indexed_count": indexed_count,
         }
 
         self._print_summary(summary)
@@ -270,6 +294,7 @@ class DataPipeline:
         table.add_row("Validation Failures", str(summary["failed_validations"]))
         table.add_row("DB Inserts", str(summary["db_result"].get("inserted", 0)))
         table.add_row("DB Failures", str(summary["db_result"].get("failed", 0)))
+        table.add_row("Vector DB Indexed", str(summary.get("indexed_count", 0)))
         console.print(table)
 
 

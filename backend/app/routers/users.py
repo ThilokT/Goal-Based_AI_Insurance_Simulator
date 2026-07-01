@@ -6,6 +6,7 @@ from app.schemas.users import UserProfileResponse, UpdateProfileRequest
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limiter import limiter, CRUD_RATE_LIMIT
 from app.database import get_admin_client
+from app.services.cache_decorator import cached, clear_cache
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -17,7 +18,8 @@ router = APIRouter(prefix="/users", tags=["Users"])
     description="Returns the authenticated user's profile data.",
 )
 @limiter.limit(CRUD_RATE_LIMIT)
-async def get_my_profile(request: Request, user: dict = Depends(get_current_user)):
+@cached(ttl_seconds=300, key_prefix="user_profile")
+def get_my_profile(request: Request, user: dict = Depends(get_current_user)):
     """Fetch the authenticated user's profile."""
     client = get_admin_client()
 
@@ -25,7 +27,6 @@ async def get_my_profile(request: Request, user: dict = Depends(get_current_user
         client.table("profiles")
         .select("*")
         .eq("id", user["user_id"])
-        .single()
         .execute()
     )
 
@@ -35,7 +36,11 @@ async def get_my_profile(request: Request, user: dict = Depends(get_current_user
             detail="Profile not found",
         )
 
-    return UserProfileResponse(id=user["user_id"], **response.data)
+    profile_data = response.data[0]
+    if "id" not in profile_data:
+        profile_data["id"] = user["user_id"]
+        
+    return UserProfileResponse(**profile_data)
 
 
 @router.put(
@@ -45,7 +50,7 @@ async def get_my_profile(request: Request, user: dict = Depends(get_current_user
     description="Update profile fields (age, income, risk appetite, etc.).",
 )
 @limiter.limit(CRUD_RATE_LIMIT)
-async def update_my_profile(
+def update_my_profile(
     request: Request,
     body: UpdateProfileRequest,
     user: dict = Depends(get_current_user),
@@ -61,17 +66,32 @@ async def update_my_profile(
             detail="No fields to update",
         )
 
-    response = (
-        client.table("profiles")
-        .update(update_data)
-        .eq("id", user["user_id"])
-        .execute()
-    )
+    # Add the ID for upsert
+    update_data["id"] = user["user_id"]
+
+    try:
+        response = (
+            client.table("profiles")
+            .upsert(update_data)
+            .execute()
+        )
+        clear_cache("user_profile")
+    except Exception as e:
+        import logging
+        import traceback
+        logging.getLogger("lifemap").error(f"Error updating profile: {e}")
+        with open("error_log.txt", "w") as f:
+            f.write(str(e) + "\n" + traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
     if not response.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Profile not found",
+            detail="Profile could not be updated",
         )
 
-    return UserProfileResponse(id=user["user_id"], **response.data[0])
+    profile_data = response.data[0]
+    if "id" not in profile_data:
+        profile_data["id"] = user["user_id"]
+        
+    return UserProfileResponse(**profile_data)
