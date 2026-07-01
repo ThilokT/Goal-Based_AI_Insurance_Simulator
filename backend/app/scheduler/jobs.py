@@ -30,8 +30,8 @@ async def monthly_product_refresh():
         validated = pipeline.validated_products
 
         # Step 2: Re-index vector store
-        from ai_services.vectorstore import ProductVectorStore
-        store = ProductVectorStore()
+        from ai_services.vectorstore import get_vectorstore
+        store = get_vectorstore()
         product_dicts = [p.model_dump(mode="json") for p in validated]
         count = store.index_products(product_dicts)
         logger.info(f"VectorStore: indexed {count} products")

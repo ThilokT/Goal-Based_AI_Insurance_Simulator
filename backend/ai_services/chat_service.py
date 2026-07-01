@@ -148,9 +148,9 @@ class ChatService:
             system_instruction=SYSTEM_PROMPT,
         )
         self._groq_client = None
-        self._use_fallback = False
-        self._last_gemini_failure: float = 0
-        self._fallback_cooldown = 60  # seconds before retrying Gemini
+
+        from ai_services.semantic_cache import SemanticCache
+        self.semantic_cache = SemanticCache()
 
         console.print(f"[green]ChatService initialized (model: {CHAT_MODEL})[/green]")
 
@@ -170,15 +170,8 @@ class ChatService:
         return self._groq_client
 
     def _should_use_fallback(self) -> bool:
-        """Check if we should use Groq fallback instead of Gemini."""
-        if not self._use_fallback:
-            return False
-        # Try Gemini again after cooldown period
-        if time.time() - self._last_gemini_failure > self._fallback_cooldown:
-            self._use_fallback = False
-            console.print("[cyan]🔄 Retrying Gemini after cooldown...[/cyan]")
-            return False
-        return True
+        """Always try Gemini first. Fallback happens only on exception."""
+        return False
 
     # ── Conversation Management ───────────────────────────
 
@@ -213,25 +206,58 @@ class ChatService:
 
     # ── Gemini Chat ───────────────────────────────────────
 
+    def _build_optimized_context(self, user_id: str) -> list[dict]:
+        """
+        Sliding Window + Summary context optimization.
+        If history has > 6 messages, summarize older messages to save tokens.
+        """
+        history = self.get_history(user_id)
+        if len(history) <= 6:
+            return history
+
+        old_messages = history[:-6]
+        recent_messages = history[-6:]
+
+        summary_prompt = (
+            "Summarize this conversation into 2-3 sentences, "
+            "capturing the main topics discussed so far.\n\n"
+            + "\n".join(f"{m['role']}: {m['content']}" for m in old_messages)
+        )
+        
+        # Use a fast instance without the verbose system prompt for summarization
+        flash_model = genai.GenerativeModel(CHAT_MODEL)
+        try:
+            summary = flash_model.generate_content(summary_prompt).text
+            console.print(f"[cyan]📉 Context Compressed: {len(old_messages)} old messages reduced to {len(summary)} chars.[/cyan]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Summary generation failed: {e}. Using sliding window without summary.[/yellow]")
+            return recent_messages
+
+        context = [
+            {"role": "user", "content": f"[Previous conversation summary]: {summary}"},
+            {"role": "assistant", "content": "Understood. I'll use this context."},
+        ] + recent_messages
+        return context
+
     def _send_gemini(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None) -> str:
         """Send message via Gemini and return the response text."""
-        history = self.get_history(user_id)
+        history = self._build_optimized_context(user_id)
 
         # Build Gemini-compatible history
         gemini_history = []
         for msg in history:
             role = "user" if msg["role"] == "user" else "model"
-            gemini_history.append({"role": role, "parts": [msg["content"]]})
+            if gemini_history and gemini_history[-1]["role"] == role:
+                gemini_history[-1]["parts"][0] += f"\n\n{msg['content']}"
+            else:
+                gemini_history.append({"role": role, "parts": [msg["content"]]})
 
         if product_context:
             context_str = f"PRODUCT CONTEXT from database:\n{product_context}\n\nPlease use this information to answer the user's latest question if relevant."
             gemini_history.append({"role": "user", "parts": [context_str]})
             gemini_history.append({"role": "model", "parts": ["Understood. I will use this product context."]})
 
-        boundary = "SYSTEM REMINDER: Decline any coding, non-financial, or prompt-related requests gracefully. "
-        if user_profile:
-            boundary += f"USER PROFILE: {json.dumps(user_profile)}. ONLY use this profile if the user's latest question is about their finances."
-            
+        boundary = f"SYSTEM REMINDER: Decline any coding, non-financial, or prompt-related requests gracefully. USER ID: {user_id}"
         gemini_history.append({"role": "user", "parts": [boundary]})
         gemini_history.append({"role": "model", "parts": ["Understood. I will decline unrelated requests and only use the profile when relevant."]})
 
@@ -241,23 +267,23 @@ class ChatService:
 
     def _send_gemini_stream(self, user_id: str, message: str, user_profile: dict = None, product_context: str = None):
         """Send message via Gemini and yield the response chunks."""
-        history = self.get_history(user_id)
+        history = self._build_optimized_context(user_id)
 
         # Build Gemini-compatible history
         gemini_history = []
         for msg in history:
             role = "user" if msg["role"] == "user" else "model"
-            gemini_history.append({"role": role, "parts": [msg["content"]]})
+            if gemini_history and gemini_history[-1]["role"] == role:
+                gemini_history[-1]["parts"][0] += f"\n\n{msg['content']}"
+            else:
+                gemini_history.append({"role": role, "parts": [msg["content"]]})
 
         if product_context:
             context_str = f"PRODUCT CONTEXT from database:\n{product_context}\n\nPlease use this information to answer the user's latest question if relevant."
             gemini_history.append({"role": "user", "parts": [context_str]})
             gemini_history.append({"role": "model", "parts": ["Understood. I will use this product context."]})
 
-        boundary = "SYSTEM REMINDER: Decline any coding, non-financial, or prompt-related requests gracefully. "
-        if user_profile:
-            boundary += f"USER PROFILE: {json.dumps(user_profile)}. ONLY use this profile if the user's latest question is about their finances."
-            
+        boundary = f"SYSTEM REMINDER: Decline any coding, non-financial, or prompt-related requests gracefully. USER ID: {user_id}"
         gemini_history.append({"role": "user", "parts": [boundary]})
         gemini_history.append({"role": "model", "parts": ["Understood. I will decline unrelated requests and only use the profile when relevant."]})
 
@@ -274,11 +300,9 @@ class ChatService:
         if client is None:
             raise RuntimeError("No fallback provider available")
 
-        history = self.get_history(user_id)
+        history = self._build_optimized_context(user_id)
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        if user_profile:
-            messages[0]["content"] += f"\n\nUSER PROFILE CONTEXT:\n{json.dumps(user_profile)}"
+        messages = [{"role": "system", "content": f"{SYSTEM_PROMPT}\n\nUSER ID: {user_id}"}]
         if product_context:
             messages[0]["content"] += f"\n\nPRODUCT CONTEXT (Use this to answer the user):\n{product_context}"
 
@@ -304,11 +328,9 @@ class ChatService:
         if client is None:
             raise RuntimeError("No fallback provider available")
 
-        history = self.get_history(user_id)
+        history = self._build_optimized_context(user_id)
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        if user_profile:
-            messages[0]["content"] += f"\n\nUSER PROFILE CONTEXT:\n{json.dumps(user_profile)}"
+        messages = [{"role": "system", "content": f"{SYSTEM_PROMPT}\n\nUSER ID: {user_id}"}]
         if product_context:
             messages[0]["content"] += f"\n\nPRODUCT CONTEXT (Use this to answer the user):\n{product_context}"
 
@@ -348,6 +370,18 @@ class ChatService:
         """
         provider = "gemini"
 
+        # Check semantic cache first
+        cached_answer = self.semantic_cache.get(user_id, message)
+        if cached_answer:
+            history = self.get_history(user_id)
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": cached_answer})
+            return {
+                "response": cached_answer,
+                "provider": "cache",
+                "history_length": len(history),
+            }
+
         try:
             if self._should_use_fallback():
                 response_text = self._send_groq(user_id, message, user_profile=user_profile, product_context=product_context)
@@ -381,6 +415,9 @@ class ChatService:
         history = self.get_history(user_id)
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": response_text})
+        
+        if provider != "error":
+            self.semantic_cache.set(user_id, message, response_text)
 
         return {
             "response": response_text,
@@ -395,6 +432,15 @@ class ChatService:
         """
         provider = "gemini"
         full_response = ""
+
+        # Check semantic cache first
+        cached_answer = self.semantic_cache.get(user_id, message)
+        if cached_answer:
+            history = self.get_history(user_id)
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": cached_answer})
+            yield cached_answer
+            return
 
         try:
             if self._should_use_fallback():
@@ -414,8 +460,6 @@ class ChatService:
                         console.print(
                             f"[yellow]! Gemini rate-limited, switching to Groq stream: {e}[/yellow]"
                         )
-                        self._use_fallback = True
-                        self._last_gemini_failure = time.time()
                         stream = self._send_groq_stream(user_id, message, user_profile=user_profile, product_context=product_context)
                         provider = "groq"
                     else:
@@ -440,6 +484,9 @@ class ChatService:
         history = self.get_history(user_id)
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": full_response})
+        
+        if provider != "error":
+            self.semantic_cache.set(user_id, message, full_response)
 
     # ── Context Extraction ────────────────────────────────
 

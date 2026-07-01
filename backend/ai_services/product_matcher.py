@@ -14,7 +14,7 @@ from typing import Optional
 from rich.console import Console
 
 from ai_services.models import FinancialGoal, ProductMatch
-from ai_services.vectorstore import ProductVectorStore
+from ai_services.vectorstore import ProductVectorStore, get_vectorstore
 
 console = Console()
 
@@ -56,7 +56,7 @@ class ProductMatcher:
             vectorstore: An existing ProductVectorStore instance.
                          If None, creates a new one (loading from disk).
         """
-        self.vectorstore = vectorstore or ProductVectorStore()
+        self.vectorstore = vectorstore or get_vectorstore()
 
     def _goal_to_query(self, goal: FinancialGoal) -> str:
         """

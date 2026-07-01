@@ -22,7 +22,16 @@ from ai_services.config import (
 )
 from ai_services.models import ScrapedProduct, ProductMatch
 
+from functools import lru_cache
+from app.services.cache_decorator import cached
+
 console = Console()
+
+
+@lru_cache(maxsize=1)
+def get_vectorstore():
+    """Lazy singleton for the ProductVectorStore."""
+    return ProductVectorStore()
 
 
 class ProductVectorStore:
@@ -208,6 +217,7 @@ class ProductVectorStore:
 
     # ── Semantic Search ───────────────────────────────────
 
+    @cached(ttl_seconds=1800, key_prefix="vectorstore")
     def search_products(
         self,
         query: str,
@@ -298,7 +308,7 @@ def main():
     with open(seed_path, "r", encoding="utf-8") as f:
         products = json.load(f)
 
-    store = ProductVectorStore()
+    store = get_vectorstore()
     store.index_products(products)
 
     # Test queries

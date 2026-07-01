@@ -4,10 +4,12 @@ Supabase client — provides admin and per-user client instances.
 - Admin client: uses the service_role key, bypasses RLS (for server-side ops).
 - User client: uses the anon key + user JWT, RLS is enforced.
 """
+from functools import lru_cache
 from supabase import create_client, Client
 from app.config import get_settings
 
 
+@lru_cache(maxsize=1)
 def get_admin_client() -> Client:
     """
     Admin Supabase client (service_role key).

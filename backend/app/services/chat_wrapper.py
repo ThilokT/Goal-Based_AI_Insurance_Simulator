@@ -8,7 +8,7 @@ import logging
 import json
 from typing import AsyncGenerator
 from ai_services.chat_service import ChatService
-from ai_services.vectorstore import ProductVectorStore
+from ai_services.vectorstore import get_vectorstore
 from app.services.input_guard import InputGuard
 from app.services.output_sanitizer import OutputSanitizer
 
@@ -57,7 +57,7 @@ async def stream_chat_response(
     
     # RAG: Fetch relevant product context based on user's message
     try:
-        vectorstore = ProductVectorStore()
+        vectorstore = get_vectorstore()
         results = vectorstore.search_products(message, n_results=3)
         product_context = ""
         if results:

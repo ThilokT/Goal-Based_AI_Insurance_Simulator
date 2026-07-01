@@ -266,8 +266,8 @@ class DataPipeline:
         db_result = self.upsert_to_supabase(validated)
 
         # Step 4: Index to VectorStore
-        from ai_services.vectorstore import ProductVectorStore
-        store = ProductVectorStore()
+        from ai_services.vectorstore import get_vectorstore
+        store = get_vectorstore()
         product_dicts = [p.model_dump(mode="json") for p in validated]
         indexed_count = store.index_products(product_dicts)
 

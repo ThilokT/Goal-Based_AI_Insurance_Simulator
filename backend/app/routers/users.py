@@ -6,6 +6,7 @@ from app.schemas.users import UserProfileResponse, UpdateProfileRequest
 from app.middleware.auth import get_current_user
 from app.middleware.rate_limiter import limiter, CRUD_RATE_LIMIT
 from app.database import get_admin_client
+from app.services.cache_decorator import cached, clear_cache
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -17,7 +18,8 @@ router = APIRouter(prefix="/users", tags=["Users"])
     description="Returns the authenticated user's profile data.",
 )
 @limiter.limit(CRUD_RATE_LIMIT)
-async def get_my_profile(request: Request, user: dict = Depends(get_current_user)):
+@cached(ttl_seconds=300, key_prefix="user_profile")
+def get_my_profile(request: Request, user: dict = Depends(get_current_user)):
     """Fetch the authenticated user's profile."""
     client = get_admin_client()
 
@@ -48,7 +50,7 @@ async def get_my_profile(request: Request, user: dict = Depends(get_current_user
     description="Update profile fields (age, income, risk appetite, etc.).",
 )
 @limiter.limit(CRUD_RATE_LIMIT)
-async def update_my_profile(
+def update_my_profile(
     request: Request,
     body: UpdateProfileRequest,
     user: dict = Depends(get_current_user),
@@ -73,6 +75,7 @@ async def update_my_profile(
             .upsert(update_data)
             .execute()
         )
+        clear_cache("user_profile")
     except Exception as e:
         import logging
         import traceback
