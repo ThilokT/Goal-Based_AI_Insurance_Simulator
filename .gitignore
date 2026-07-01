@@ -84,3 +84,8 @@ aiml_flowchart.html
 
 dist/
 *.log
+
+# Virtual Environments
+venv/
+backend/venv/
+.env
