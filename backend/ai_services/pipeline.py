@@ -257,6 +257,14 @@ class DataPipeline:
             validated = pdf_products
             self.raw_products = [p.model_dump(mode="json") for p in pdf_products]
             self.validated_products = validated
+            
+            output_json_path = Path(__file__).parent.parent / "data" / "extracted_products.json"
+            try:
+                with open(output_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.raw_products, f, indent=4, ensure_ascii=False)
+                console.print(f"[green]✅ Saved extracted JSON data to {output_json_path}[/green]")
+            except Exception as e:
+                console.print(f"[red]❌ Failed to save extracted JSON data: {e}[/red]")
 
         if not validated:
             console.print("[red]❌ No valid products to process. Pipeline aborted.[/red]")
