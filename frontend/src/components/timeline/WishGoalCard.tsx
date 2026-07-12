@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn, formatCurrency } from '../../lib/utils'
 import type { SimulationResult, LifeGoal, UserProfile, WhatIfParams } from '../../types'
@@ -26,6 +27,8 @@ export default function WishGoalCard({
   isSimulating,
   updateGoalTargetAmount
 }: WishGoalCardProps) {
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+
   // Use what-if target or default goal corpus
   const targetCover = whatIfParams.goalTargetAmounts?.[goal.id] ?? goal.corpusNeeded
   
@@ -70,9 +73,19 @@ export default function WishGoalCard({
   const maternityCostScaled = Math.round(1345 * scale)
   const maternityCost = maternityEnabled ? maternityCostScaled : 0
   const finalPremium = activeBasePremium + maternityCost
+  
+  const totalInvested = finalPremium * 12 * paymentTerm
 
   // Maternity Cover Amount dynamically scaled
   const maternityCoverLakhs = ((5_00_000 * scale) / 100000).toFixed(2)
+  
+  const maxPayout = targetCover + (targetCover / 2) + (maternityEnabled ? (5_00_000 * scale) : 0)
+
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, totalInvested);
+    }
+  }, [totalInvested, result?.goalId || goal?.id, setCardInvestment]);
 
   return (
     <motion.div 
@@ -112,10 +125,10 @@ export default function WishGoalCard({
             <div className="flex justify-between items-start mb-4">
               <div>
                 <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-1">
-                  Age {event.age} • Health Protection
+                  Age {event.age} • {result.recommendedProductCategory || 'Health Protection'}
                 </p>
-                <h3 className="font-display font-bold text-gray-900 text-xl leading-tight">ICICI Pru Wish</h3>
-                <p className="text-sm text-gray-500 mt-1">Here is a customised plan for you</p>
+                <h3 className="font-display font-bold text-gray-900 text-xl leading-tight">{goal.label}</h3>
+                <p className="text-sm text-gray-500 mt-1">{result.recommendedProductName || 'ICICI Pru Wish'}</p>
               </div>
               <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl shrink-0 bg-red-50 text-brand-orange border border-red-100 shadow-sm">
                 {goal.icon}
@@ -124,13 +137,7 @@ export default function WishGoalCard({
 
             {/* Red Bordered Box (Vital + Surgical + Addon) */}
             <div className="border-2 border-red-800 rounded-xl overflow-hidden mb-6 relative bg-[#fdfaf5]">
-              {/* Need higher health cover badge */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-red-800 text-white text-[10px] font-bold px-3 py-1 rounded-b-lg flex items-center gap-1 z-10">
-                <span className="w-3 h-3 bg-white rounded-full text-red-800 flex items-center justify-center text-[8px]">!</span>
-                Need higher health cover? <span className="underline cursor-pointer">Check</span>
-              </div>
-              
-              <div className="p-4 pt-8 grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-red-800/20">
+              <div className="p-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-red-800/20">
                 {/* Vital Care */}
                 <div>
                   <h4 className="text-xs font-bold text-gray-800 mb-1">Vital Care Cover</h4>
@@ -302,41 +309,44 @@ export default function WishGoalCard({
 
               </div>
             </div>
-            
-            {/* EBI Checkbox */}
-            <div className="flex gap-2 items-start mb-6">
-              <input type="checkbox" defaultChecked className="mt-1 accent-brand-orange" />
-              <p className="text-[9px] text-gray-500 leading-tight">
-                By selecting this checkbox, I agree and confirm that I have read and understood the Electronic Benefit Illustration (EBI) and wish to proceed to purchase the policy.
-              </p>
-              <div className="shrink-0 flex flex-col items-center ml-2">
-                 <span className="text-red-500 text-xs">📄</span>
-                 <span className="text-[8px] text-brand-orange font-bold whitespace-nowrap">Download EBI</span>
+
+            {/* Financial Summary */}
+            <div className="mt-5 p-4 rounded-xl bg-gray-50 border border-gray-200">
+              <h4 className="text-xs font-bold text-gray-800 mb-3 uppercase tracking-wider">Financial Summary</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[10px] text-gray-500 font-bold mb-1">Total Premium Paid</div>
+                  <div className="text-lg font-display font-bold text-gray-900">₹{totalInvested.toLocaleString('en-IN')}</div>
+                  <div className="text-[9px] text-gray-400">Over {paymentTerm} years</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500 font-bold mb-1">Max Health Payout</div>
+                  <div className="text-lg font-display font-bold text-brand-orange">
+                    ₹{maxPayout.toLocaleString('en-IN')}
+                  </div>
+                  <div className="text-[9px] text-gray-400">
+                    If all covers are claimed
+                  </div>
+                </div>
               </div>
             </div>
-
           </div>
-          
-          {/* Bottom Sticky Bar */}
-          <div className="border-t border-gray-200 p-4 bg-gray-50 flex items-center justify-between">
+
+          {/* Premium Breakup */}
+          <div className="bg-[#fdfaf6] border-t border-gray-200 p-4 flex justify-between items-center">
+            <div className="flex flex-col">
+              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Your Premium Breakup</span>
+              <div className="flex items-end gap-2 mt-1">
+                <span className="text-2xl font-display font-bold text-gray-900">
+                  ₹{finalPremium.toLocaleString('en-IN')}
+                </span>
+                <span className="text-xs font-semibold text-gray-600 mb-1">Monthly</span>
+              </div>
+            </div>
             <div>
-              <p className="text-[11px] text-gray-500 font-bold mb-0.5">Your Premium</p>
-              <div className="flex items-end gap-2">
-                 <p className="text-2xl font-display font-bold text-brand-orange leading-none">
-                    ₹{finalPremium.toLocaleString('en-IN')}
-                 </p>
-                 <span className="bg-red-800 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">0% GST</span>
-              </div>
-              <p className="text-[9px] text-brand-orange underline mt-1 cursor-pointer">(View Break Up)</p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button className="bg-gradient-to-r from-orange-500 to-brand-orange text-white font-bold text-sm px-6 py-2 rounded shadow-md hover:shadow-lg transition-all">
-                Proceed
-              </button>
+              <span className="bg-red-800 text-white text-[9px] font-bold px-2 py-1 rounded">0% GST</span>
             </div>
           </div>
-
         </div>
       </div>
       

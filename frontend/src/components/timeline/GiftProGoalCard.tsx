@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn, formatCurrency } from '../../lib/utils'
 import type { SimulationResult, LifeGoal, UserProfile, WhatIfParams } from '../../types'
@@ -26,6 +27,8 @@ export default function GiftProGoalCard({
   isSimulating,
   updateGoalTargetAmount
 }: GiftProGoalCardProps) {
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+
   
   // Base Investment Input
   const [investment, setInvestment] = useState(360000)
@@ -125,6 +128,12 @@ export default function GiftProGoalCard({
   const formatLakhs = (val: number) => (val / 100000).toFixed(2)
   const formatExactRupee = (val: number) => val.toLocaleString('en-IN')
 
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, totalInvestment);
+    }
+  }, [totalInvestment, result?.goalId || goal?.id, setCardInvestment]);
+
   return (
     <motion.div 
       key={result.goalId} 
@@ -159,7 +168,20 @@ export default function GiftProGoalCard({
         <div className="w-full max-w-4xl bg-white rounded-2xl shadow-md border border-gray-100 relative overflow-y-auto max-h-[550px]">
           
           <div className="p-5 flex flex-col">
-            
+            {/* Header */}
+            <div className="flex justify-between items-start mb-5 pb-5 border-b border-gray-100">
+              <div>
+                <p className="text-[10px] font-bold text-gray-500 tracking-wider uppercase mb-1">
+                  Age {event?.age || 30} • {result.recommendedProductCategory || 'Guaranteed Income'}
+                </p>
+                <h3 className="font-display font-bold text-gray-900 text-xl leading-tight">{goal?.label}</h3>
+                <p className="text-sm text-gray-500 mt-1">{result.recommendedProductName || 'ICICI Pru Gift Pro'}</p>
+              </div>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0" style={{ backgroundColor: `${catColor}15`, color: catColor }}>
+                {goal?.icon ?? '🎁'}
+              </div>
+            </div>
+
             {/* Top Section - Customise your plan */}
             <div className="w-full bg-gray-50 rounded-xl p-5 border border-gray-200 mb-5 relative">
                
@@ -302,7 +324,10 @@ export default function GiftProGoalCard({
                 <div className="flex gap-2 mb-6">
                   {/* Yearly Income */}
                   <div className="flex-[1.2] bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-center shadow-sm relative z-10">
-                    <p className="text-[10px] text-gray-500 font-bold mb-1">Yearly Income of</p>
+                    <div className="bg-[#e46434] text-white text-[9px] font-bold px-2 py-0.5 rounded inline-block self-start mb-2 uppercase tracking-wide">
+                      Starts {incomeStartsFrom}th Year
+                    </div>
+                    <p className="text-[10px] text-gray-500 font-bold mb-1">Guaranteed Every Year Payout</p>
                     <p className="text-xl font-bold text-[#e46434] mb-1">₹{formatLakhs(yearlyIncome)} Lakh</p>
                     <p className="text-[10px] text-gray-600 font-bold">For {getIncomeForYears} years</p>
                     {isIncreasing && (
@@ -342,8 +367,17 @@ export default function GiftProGoalCard({
                       </div>
                     </>
                   )}
+              </div>
+              
+              {/* Total Invested Summary */}
+              <div className="bg-gray-50 flex justify-between items-center border-t border-gray-200 mt-6 p-4 rounded-xl">
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total Amount Invested</p>
+                  <p className="text-xs text-gray-600 font-medium">Over {payForYears} years</p>
                 </div>
-                
+                <div className="text-lg font-display font-bold text-gray-900">
+                  ₹{formatLakhs(totalInvestment)} Lakh
+                </div>
               </div>
 
             </div>

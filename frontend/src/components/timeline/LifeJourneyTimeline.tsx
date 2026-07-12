@@ -67,7 +67,6 @@ const GoalTargetSlider = ({ goal, currentAmount, isEven }: { goal: any, currentA
   )
 }
 
-import ProductSimulationView from '../simulation/ProductSimulationView'
 
 function Legend() {
   return (
@@ -100,8 +99,6 @@ export default function LifeJourneyTimeline() {
     setIsOffline,
     isSimulating,
     setIsSimulating,
-    simulationMode,
-    setSimulationMode,
     setWhatIfParams
   } = useAppStore()
 
@@ -138,7 +135,7 @@ export default function LifeJourneyTimeline() {
   }
 
   useEffect(() => {
-    if (!profile || goals.length === 0 || simulationMode === 'product') return
+    if (!profile || goals.length === 0) return
 
     setIsSimulating(true)
 
@@ -189,7 +186,7 @@ export default function LifeJourneyTimeline() {
     }, 500)
 
     return () => clearTimeout(timeoutId)
-  }, [JSON.stringify(profile), JSON.stringify(whatIfParams), JSON.stringify(goals), simulationMode])
+  }, [JSON.stringify(profile), JSON.stringify(whatIfParams), JSON.stringify(goals)])
 
   if (!profile) {
     return (
@@ -229,36 +226,9 @@ export default function LifeJourneyTimeline() {
           <p className="text-gray-500 mt-1">Visualize your goals and financial trajectory over time.</p>
         </div>
         
-        {/* Mode Toggle */}
-        <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 shadow-sm">
-          <button
-            onClick={() => setSimulationMode('goals')}
-            className={cn(
-              "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
-              simulationMode === 'goals' 
-                ? "bg-white text-brand-navy shadow-sm" 
-                : "text-gray-500 hover:text-gray-700"
-            )}
-          >
-            Goal Timeline
-          </button>
-          <button
-            onClick={() => setSimulationMode('product')}
-            className={cn(
-              "px-4 py-1.5 text-sm font-medium rounded-md transition-colors",
-              simulationMode === 'product' 
-                ? "bg-white text-brand-navy shadow-sm" 
-                : "text-gray-500 hover:text-gray-700"
-            )}
-          >
-            Product Simulation
-          </button>
-        </div>
       </div>
       
-      {simulationMode === 'product' ? (
-        <ProductSimulationView />
-      ) : isOffline ? (
+      {isOffline ? (
         <div className="card flex flex-col items-center justify-center py-20 text-center col-span-full mx-auto w-full max-w-3xl mt-10">
           <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center mb-4 border border-red-200">
             <span className="text-red-500 text-2xl">🔌</span>

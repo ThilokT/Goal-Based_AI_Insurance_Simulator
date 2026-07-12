@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn, formatCurrency } from '../../lib/utils'
 import type { SimulationResult, LifeGoal, UserProfile } from '../../types'
@@ -22,6 +23,8 @@ export default function GppFlexiGoalCard({
   catColor,
   isSimulating,
 }: GppFlexiGoalCardProps) {
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+
   // Local state for interactive UI mirroring the ICICI calculator
   const initialAnnualPremium = (result.monthlyPremium || 25000) * 12
   
@@ -72,6 +75,12 @@ export default function GppFlexiGoalCard({
     return `₹ ${(amount / 100000).toFixed(2)} Lakh`
   }
 
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, totalPaid);
+    }
+  }, [totalPaid, result?.goalId || goal?.id, setCardInvestment]);
+
   return (
     <motion.div 
       key={result.goalId} 
@@ -113,7 +122,7 @@ export default function GppFlexiGoalCard({
                 {goal?.icon}
               </div>
               <div className={cn(isEven ? "sm:text-right" : "text-left")}>
-                <span className="text-[10px] font-bold tracking-wider text-purple-600 uppercase">Customize Your Plan</span>
+                <span className="text-[10px] font-bold tracking-wider text-purple-600 uppercase">Age {event.age} • {result.recommendedProductCategory || 'Guaranteed Savings'}</span>
                 <h3 className="font-display font-bold text-gray-900 text-lg leading-tight mt-0.5">{goal?.label}</h3>
                 <p className="text-xs text-purple-800/80 font-medium">{result.recommendedProductName}</p>
               </div>
@@ -201,7 +210,10 @@ export default function GppFlexiGoalCard({
                 <div className={cn("p-4", withRop ? "bg-orange-50/30" : "bg-white")}>
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Annuity Amount</p>
+                      <div className={cn("text-white text-[9px] font-bold px-2 py-0.5 rounded inline-block self-start mb-2 uppercase tracking-wide", withRop ? "bg-brand-orange" : "bg-gray-400")}>
+                        Starts {deferment + 1}th Year
+                      </div>
+                      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Guaranteed Every Year Payout</p>
                       <p className={cn("text-xl font-display font-bold", withRop ? "text-brand-orange" : "text-gray-900")}>{formatExactRupee(annuityAmountWithRop)} <span className="text-sm font-medium">/year</span></p>
                       <p className={cn("text-[10px] font-bold mt-1", withRop ? "text-orange-700" : "text-gray-500")}>{(annuityRateWithRop * 100).toFixed(2)}% Annuity rate</p>
                     </div>
@@ -239,7 +251,10 @@ export default function GppFlexiGoalCard({
                 <div className={cn("p-4", !withRop ? "bg-orange-50/30" : "bg-white")}>
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Annuity Amount</p>
+                      <div className={cn("text-white text-[9px] font-bold px-2 py-0.5 rounded inline-block self-start mb-2 uppercase tracking-wide", !withRop ? "bg-brand-orange" : "bg-gray-400")}>
+                        Starts {deferment + 1}th Year
+                      </div>
+                      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Guaranteed Every Year Payout</p>
                       <p className={cn("text-xl font-display font-bold", !withRop ? "text-brand-orange" : "text-gray-900")}>{formatExactRupee(annuityAmountWithoutRop)} <span className="text-sm font-medium">/year</span></p>
                       <p className={cn("text-[10px] font-bold mt-1", !withRop ? "text-orange-700" : "text-gray-500")}>{(annuityRateWithoutRop * 100).toFixed(2)}% Annuity rate</p>
                     </div>
@@ -267,6 +282,17 @@ export default function GppFlexiGoalCard({
 
               </div>
 
+            </div>
+
+            {/* Total Invested Summary */}
+            <div className="bg-gray-50 flex justify-between items-center border-t border-gray-200 mt-6 p-4 rounded-xl">
+              <div>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total Amount Invested</p>
+                <p className="text-xs text-gray-600 font-medium">Over {ppt} years</p>
+              </div>
+              <div className="text-lg font-display font-bold text-gray-900">
+                {formatCurrency(totalPaid)}
+              </div>
             </div>
 
           </div>

@@ -113,6 +113,9 @@ interface AppState {
   isSimulating: boolean
   setIsSimulating: (v: boolean) => void
 
+  cardInvestments: Record<string, number>
+  setCardInvestment: (goalId: string, amount: number) => void
+
   // Products (cached count from API)
   productCount: number
   setProductCount: (n: number) => void
@@ -147,6 +150,7 @@ export const useAppStore = create<AppState>()(
         simulationResults: [],
         goals: [],
         activeTab: 'dashboard',
+        cardInvestments: {},
       }),
 
       isProfileLoading: true,
@@ -541,6 +545,11 @@ export const useAppStore = create<AppState>()(
       setIsOffline: (isOffline) => set({ isOffline }),
       isSimulating: false,
       setIsSimulating: (isSimulating) => set({ isSimulating }),
+
+      cardInvestments: {},
+      setCardInvestment: (goalId, amount) => set((state) => ({ 
+        cardInvestments: { ...state.cardInvestments, [goalId]: amount } 
+      })),
 
       productCount: 0,
       setProductCount: (productCount) => set({ productCount }),

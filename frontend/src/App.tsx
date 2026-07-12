@@ -20,8 +20,6 @@ const PAGE_TITLES: Record<string, string> = {
   onboard: 'Profile Setup',
   products: 'Products',
   timeline: 'Life Journey',
-  compare: 'Compare Products',
-  report: 'My Report',
 }
 
 function AppContent() {
@@ -40,12 +38,6 @@ function AppContent() {
         {activeTab === 'onboard' && <OnboardingFlow />}
         {activeTab === 'products' && <ProductsPage />}
         {activeTab === 'timeline' && <LifeJourneyTimeline />}
-        {activeTab === 'compare' && <ScenarioComparison />}
-        {activeTab === 'report' && (
-          <div className="card text-center py-20">
-            <p className="text-gray-400 text-sm">PDF report generation will be wired to the backend API in Phase 4.</p>
-          </div>
-        )}
       </motion.div>
     </AnimatePresence>
   )

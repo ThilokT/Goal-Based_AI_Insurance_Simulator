@@ -11,8 +11,6 @@ const NAV_ITEMS = [
   { id: 'chat',       label: 'AI Advisor',   icon: MessageSquare },
   { id: 'timeline',   label: 'Life Journey', icon: TrendingUp },
   { id: 'products',   label: 'Products',     icon: Package },
-  { id: 'compare',    label: 'Compare',      icon: BarChart3 },
-  { id: 'report',     label: 'My Report',    icon: FileText },
 ]
 
 export default function Sidebar() {

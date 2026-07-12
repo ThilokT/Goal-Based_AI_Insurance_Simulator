@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn, formatCurrency } from '../../lib/utils'
 import type { SimulationResult, LifeGoal, UserProfile } from '../../types'
@@ -22,38 +23,81 @@ export default function SmartKidGoalCard({
   catColor,
   isSimulating,
 }: SmartKidGoalCardProps) {
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+
   // Local state for interactive UI mirroring the ICICI calculator
   // Initialized from AI recommendation
   const initialAnnualPremium = (result.monthlyPremium || 5000) * 12
+  
+  const today = new Date();
+  const formattedDate = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
   
   const [annualInvestment, setAnnualInvestment] = useState<number>(
     Math.max(10000, Math.min(10000000, initialAnnualPremium))
   )
   const [ppt, setPpt] = useState<number>(12) // Pay For (Years)
+  const [policyTerm, setPolicyTerm] = useState<number>(25) // Policy Term (Years)
+  const [investmentFrequency, setInvestmentFrequency] = useState<'Yearly' | 'Half-Yearly' | 'Monthly'>('Yearly')
+  const [payoutFrequency, setPayoutFrequency] = useState<'Equal Income' | 'Increasing Income'>('Increasing Income')
   const [selectedPayoutIdx, setSelectedPayoutIdx] = useState<number>(0) // Default to 1st payout
   
-  // The policy term is typically longer than PPT, say PPT + 10 years or up to child turning 21
-  const policyTerm = Math.max(15, ppt + 13) // e.g. 25 years as in screenshot
+  // What they actually pay over the year
+  const installmentsPerYear = investmentFrequency === 'Monthly' ? 12 : investmentFrequency === 'Half-Yearly' ? 2 : 1;
+  const actualAnnualPaid = annualInvestment * installmentsPerYear;
+  const totalPaid = actualAnnualPaid * ppt;
+
+  // The base premium used to calculate returns (penalized by modal loading)
+  const modalFactor = investmentFrequency === 'Monthly' ? 0.088 : investmentFrequency === 'Half-Yearly' ? 0.51 : 1.0;
+  const baseAnnualPremiumForReturns = annualInvestment / modalFactor;
+  const baseTotalPaid = baseAnnualPremiumForReturns * ppt;
   
-  // Financial Calculations based on ICICI screenshot approximation
-  const totalPaid = annualInvestment * ppt
-  const lifeCover = annualInvestment * 10 // 10x Annual Premium is standard
+  // Actuarial Calculation: 4.15% strict IRR (Time Value of Money)
+  const rate = 0.0415;
   
-  // To mimic the screenshot: 60L investment -> 1.21Cr expected benefit (8% assumed rate)
-  const expectedMultiplier = 2.016 // 60L * 2.016 = 1.21 Cr
-  const totalBenefit = totalPaid * expectedMultiplier
+  // 1. Calculate FV of all premiums paid at Maturity
+  const fvAtPpt = baseAnnualPremiumForReturns * ((Math.pow(1 + rate, ppt) - 1) / rate) * (1 + rate);
+  const remainingYears = Math.max(0, policyTerm - ppt);
+  const fvPremiumsAtMaturity = fvAtPpt * Math.pow(1 + rate, remainingYears);
+
+  const lifeCover = baseAnnualPremiumForReturns * 10; // 10x Base Premium is standard
   
-  // Payout breakdown (Guaranteed / 4% rate shown in chart)
-  // At 5L annual investment, screenshot shows 12L, 18L, 30L and 60.58L Maturity
-  const payout1 = annualInvestment * 2.4 // 5L * 2.4 = 12L
-  const payout2 = annualInvestment * 3.6 // 5L * 3.6 = 18L
-  const payout3 = annualInvestment * 6.0 // 5L * 6.0 = 30L
-  const maturityBenefit = annualInvestment * 12.116 // 5L * 12.116 = 60.58L
+  // 2. Determine raw payouts based on user's selected structure
+  let payout1 = 0, payout2 = 0, payout3 = 0, payout4 = 0;
+  if (payoutFrequency === 'Increasing Income') {
+    const multiplier = ppt / 10;
+    payout1 = baseTotalPaid * 0.15 * multiplier;
+    payout2 = baseTotalPaid * 0.20 * multiplier;
+    payout3 = baseTotalPaid * 0.30 * multiplier;
+    payout4 = baseTotalPaid * 0.35 * multiplier;
+  } else {
+    // Equal Income formula
+    const multiplier = ppt / 5;
+    const equalPayout = (baseTotalPaid * 0.25) * multiplier;
+    payout1 = equalPayout;
+    payout2 = equalPayout;
+    payout3 = equalPayout;
+    payout4 = equalPayout;
+  }
+
+  // 3. Calculate FV of these payouts at Maturity (Assuming they happen in the final 4 years)
+  const fvPayoutsAtMaturity = 
+    payout1 * Math.pow(1 + rate, 3) + 
+    payout2 * Math.pow(1 + rate, 2) + 
+    payout3 * Math.pow(1 + rate, 1) + 
+    payout4 * 1;
+
+  // 4. Calculate exact maturity benefit to perfectly balance the IRR equation
+  const maturityBenefit = Math.max(0, fvPremiumsAtMaturity - fvPayoutsAtMaturity);
   
+  // 5. Sum it up to show the final nominal Total Benefit to the user
+  const sumOfPayouts = payout1 + payout2 + payout3 + payout4;
+  const totalBenefit = sumOfPayouts + maturityBenefit;
+
   const payouts = [
     { label: `30 yr`, amount: payout1, isMaturity: false, detail: 'On 10th, 12th schooling expense' },
     { label: `31 yr`, amount: payout2, isMaturity: false, detail: 'For college admission / preparation support' },
     { label: `32 yr`, amount: payout3, isMaturity: false, detail: 'For higher studies/ career support' },
+    { label: `33 yr`, amount: payout4, isMaturity: false, detail: 'Final year support before maturity' },
   ]
   
   // Find max payout to scale the bars (including maturity for scale calculation if needed, but bars are only for payouts)
@@ -109,32 +153,45 @@ export default function SmartKidGoalCard({
 
           <div className="p-5">
             {/* Calculator Controls */}
-            <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <div className="grid grid-cols-2 gap-4 mb-6 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+              
+              {/* Row 1 */}
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
-                  Annual Investment
+                  I want to invest
                 </label>
-                <div className="font-display text-lg font-bold text-brand-navy mb-2">
-                  {formatCurrency(annualInvestment)}
-                </div>
                 <input 
-                  type="range"
-                  min={10000}
-                  max={1000000}
-                  step={10000}
+                  type="number"
                   value={annualInvestment}
                   disabled={isSimulating}
                   onChange={(e) => setAnnualInvestment(Number(e.target.value))}
-                  className="w-full accent-brand-orange h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full border border-gray-300 rounded-lg p-2 px-3 text-sm font-bold text-gray-800 bg-white h-10 outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange transition-all"
                 />
               </div>
-              
-              <div className="col-span-2 sm:col-span-1 flex flex-col justify-between">
+
+              <div className="col-span-2 sm:col-span-1">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
-                  Premium Payment Term (PPT)
+                  Investment Frequency
                 </label>
                 <select 
-                  className="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-700 font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange outline-none"
+                  className="w-full border border-gray-300 rounded-lg p-2 px-3 text-sm font-bold text-gray-700 h-10 outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange bg-white transition-all"
+                  value={investmentFrequency}
+                  onChange={(e) => setInvestmentFrequency(e.target.value as any)}
+                  disabled={isSimulating}
+                >
+                  <option value="Yearly">Yearly</option>
+                  <option value="Half-Yearly">Half-Yearly</option>
+                  <option value="Monthly">Monthly</option>
+                </select>
+              </div>
+
+              {/* Row 2 */}
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  Pay For
+                </label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg p-2 px-3 text-sm font-bold text-gray-700 h-10 outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange bg-white transition-all"
                   value={ppt}
                   onChange={(e) => setPpt(Number(e.target.value))}
                   disabled={isSimulating}
@@ -143,7 +200,45 @@ export default function SmartKidGoalCard({
                   <option value={7}>7 Years</option>
                   <option value={10}>10 Years</option>
                   <option value={12}>12 Years</option>
+                  <option value={15}>15 Years</option>
                 </select>
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  Policy Term
+                </label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg p-2 px-3 text-sm font-bold text-gray-700 h-10 outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange bg-white transition-all"
+                  value={policyTerm}
+                  onChange={(e) => setPolicyTerm(Number(e.target.value))}
+                  disabled={isSimulating}
+                >
+                  {Array.from({ length: 14 }, (_, i) => i + 17).map((term) => (
+                    <option key={term} value={term}>{term} Years</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Row 3 - Payout Frequency */}
+              <div className="col-span-2 flex items-center justify-between border-t border-gray-100 pt-4 mt-2">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                  Payout Frequency
+                </label>
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <button 
+                    className={cn("px-4 py-1.5 text-xs font-bold rounded-md transition-all", payoutFrequency === 'Equal Income' ? "bg-white text-gray-800 shadow-sm" : "text-gray-500")}
+                    onClick={() => setPayoutFrequency('Equal Income')}
+                  >
+                    Equal Income
+                  </button>
+                  <button 
+                    className={cn("px-4 py-1.5 text-xs font-bold rounded-md transition-all", payoutFrequency === 'Increasing Income' ? "bg-[#a32a29] text-white shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                    onClick={() => setPayoutFrequency('Increasing Income')}
+                  >
+                    Increasing Income
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -152,7 +247,7 @@ export default function SmartKidGoalCard({
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10 blur-xl" />
               
               <div>
-                <p className="text-[10px] text-brand-orange font-bold uppercase tracking-wider mb-1">Total Paid</p>
+                <p className="text-[10px] text-brand-orange font-bold uppercase tracking-wider mb-1">Total Invested</p>
                 <p className="text-sm font-semibold">{formatCurrency(totalPaid)}</p>
               </div>
               <div className="text-center">
@@ -176,7 +271,7 @@ export default function SmartKidGoalCard({
                     <div className="w-8 h-8 rounded-full bg-white shadow-sm border border-orange-100 flex items-center justify-center text-lg">📅</div>
                     <div className="text-left">
                       <div className="text-[9px] text-gray-500 uppercase tracking-wide">Policy Starts on</div>
-                      <div className="text-[11px] font-bold text-gray-800">12/07/2026</div>
+                      <div className="text-[11px] font-bold text-gray-800">{formattedDate}</div>
                     </div>
                   </div>
                   <div className="w-px h-8 bg-gray-200"></div>
@@ -198,12 +293,18 @@ export default function SmartKidGoalCard({
               </div>
 
               {/* Chart Area */}
-              <div className="relative pt-8 pb-4">
-                <div className="flex justify-between items-end h-40 gap-4 relative z-10 px-2 sm:px-8">
+              <div className="relative pt-16 pb-4 overflow-x-auto hide-scrollbar">
+                <div className="flex justify-between items-end h-40 gap-4 relative z-10 px-2 sm:px-8 min-w-[500px]">
                   {/* The 3 Payout Bars */}
                   {payouts.map((payout, idx) => {
                     const heightPct = Math.max(15, (payout.amount / maxPayout) * 100)
                     const isSelected = selectedPayoutIdx === idx
+
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, totalPaid);
+    }
+  }, [totalPaid, result?.goalId || goal?.id, setCardInvestment]);
 
                     return (
                       <div key={idx} className="flex flex-col items-center gap-0 flex-1 group cursor-pointer h-full justify-end relative" onClick={() => setSelectedPayoutIdx(idx)}>

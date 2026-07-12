@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn, formatCurrency } from '../../lib/utils'
 import type { SimulationResult, LifeGoal, UserProfile } from '../../types'
@@ -13,6 +14,114 @@ interface IProtectGoalCardProps {
   isSimulating: boolean
 }
 
+function AgeSelect({ value, onChange, options, disabled }: { value: number, onChange: (val: number) => void, options: number[], disabled: boolean }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: any) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  return (
+    <div className="relative w-full" ref={ref}>
+      <button 
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "w-full border border-gray-300 rounded p-2 text-sm font-bold text-gray-800 bg-white flex justify-between items-center h-10",
+          disabled ? "bg-gray-50 cursor-not-allowed opacity-70" : "cursor-pointer"
+        )}
+      >
+        <span>{value} years</span>
+        <span className="text-[10px] text-gray-500">▼</span>
+      </button>
+      
+      {isOpen && (
+        <div className="absolute z-[100] w-[220px] right-0 mt-1 bg-white border border-gray-200 rounded shadow-xl max-h-60 overflow-y-auto">
+          {options.map((opt) => (
+            <div 
+              key={opt}
+              className={cn(
+                "px-3 py-2 flex items-center justify-between text-sm cursor-pointer transition-colors border-b border-gray-50 last:border-0",
+                value === opt ? "bg-red-50 font-bold text-[#b73238]" : "text-gray-700 font-medium hover:bg-gray-50"
+              )}
+              onClick={() => {
+                onChange(opt)
+                setIsOpen(false)
+              }}
+            >
+              <span>{opt} years</span>
+              {opt >= 65 && (
+                <span className="text-[8px] border border-[#b73238] text-[#b73238] rounded-full px-1.5 py-0.5 whitespace-nowrap">
+                  100% Premium refund
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LifeCoverInput({ value, onChange, disabled }: { value: number, onChange: (val: number) => void, disabled: boolean }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [tempVal, setTempVal] = useState(value.toString())
+  
+  useEffect(() => {
+    setTempVal(value.toString())
+  }, [value])
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    let parsed = parseInt(tempVal)
+    if (isNaN(parsed) || parsed < 500000) parsed = 500000
+    onChange(parsed)
+  }
+
+  if (isEditing) {
+    return (
+      <div className="relative w-full">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-500">₹</div>
+        <input 
+          autoFocus
+          type="number"
+          value={tempVal}
+          disabled={disabled}
+          onChange={(e) => setTempVal(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
+          className="w-full border border-gray-300 rounded p-2 pl-7 text-sm font-bold text-gray-800 bg-white h-10 outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div 
+      onClick={() => !disabled && setIsEditing(true)}
+      className={cn(
+        "w-full border border-gray-300 rounded p-2 px-3 text-sm font-bold text-gray-800 bg-white h-10 flex justify-between items-center transition-all",
+        disabled ? "bg-gray-50 cursor-not-allowed opacity-70" : "cursor-pointer hover:border-gray-400"
+      )}
+    >
+      <span>₹{(value / 10000000).toFixed(2)} Crore</span>
+      {!disabled && (
+        <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      )}
+    </div>
+  )
+}
+
 export default function IProtectGoalCard({
   result,
   goal,
@@ -22,6 +131,8 @@ export default function IProtectGoalCard({
   catColor,
   isSimulating,
 }: IProtectGoalCardProps) {
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+
   // Local state for interactive UI mirroring the ICICI calculator
   const initialLifeCover = goal.corpusNeeded || 10000000
   
@@ -72,6 +183,7 @@ export default function IProtectGoalCard({
   }
 
   const finalMonthly = subTotalMonthly * paymentTermMultipliers[paymentTerm].mult
+  const totalInvested = finalMonthly * 12 * paymentTermMultipliers[paymentTerm].years
   
   const formatExactCurrency = (num: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num)
@@ -138,39 +250,30 @@ export default function IProtectGoalCard({
 
             {/* Main Inputs */}
             <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-              <div className="flex-1">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
-                  Life Cover
-                </label>
-                <div className="font-display text-lg font-bold text-gray-900 mb-2">
-                  {formatCurrency(lifeCover)}
+              <div className="flex-1 flex flex-col justify-start">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    Life Cover
+                  </label>
+                  <span className="text-[9px] text-red-500 cursor-pointer">Want Higher Coverage {'>'}</span>
                 </div>
-                <input 
-                  type="range"
-                  min={5000000}
-                  max={50000000}
-                  step={1000000}
-                  value={lifeCover}
-                  disabled={isSimulating}
-                  onChange={(e) => setLifeCover(Number(e.target.value))}
-                  className="w-full accent-brand-orange h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                <LifeCoverInput 
+                  value={lifeCover} 
+                  onChange={setLifeCover} 
+                  disabled={isSimulating} 
                 />
               </div>
               
-              <div className="flex-1 flex flex-col justify-between">
+              <div className="flex-1 flex flex-col justify-start">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
                   Cover Till Age
                 </label>
-                <select 
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm text-gray-700 font-medium focus:ring-2 focus:ring-brand-orange focus:border-brand-orange outline-none"
+                <AgeSelect 
                   value={coverTillAge}
-                  onChange={(e) => setCoverTillAge(Number(e.target.value))}
+                  onChange={setCoverTillAge}
                   disabled={isSimulating}
-                >
-                  <option value={60}>60 Years</option>
-                  <option value={65}>65 Years</option>
-                  <option value={70}>70 Years</option>
-                </select>
+                  options={Array.from({ length: 99 - (profile.age + 5) + 1 }, (_, i) => (profile.age + 5) + i)}
+                />
               </div>
             </div>
             
@@ -207,13 +310,13 @@ export default function IProtectGoalCard({
             {/* Add-ons */}
             <div className="mb-5">
               <div className="flex justify-between items-center mb-3">
-                <h4 className="text-sm font-bold text-[#003366] bg-[#003366] text-white px-3 py-1 rounded-r-full -ml-5">Selected add-ons ({activeAddonsCount}/4)</h4>
+                <h4 className="text-sm font-bold bg-[#003366] text-white px-3 py-1 rounded-r-full -ml-5">Selected add-ons ({activeAddonsCount}/4)</h4>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 
                 {/* Critical Illness Cover */}
-                <div className={cn("border rounded-lg p-3 relative transition-colors", ciCover > 0 ? "border-brand-orange bg-orange-50/20" : "border-gray-200 hover:border-orange-200")}>
-                  <div className="flex justify-between items-start mb-2 cursor-pointer" onClick={() => setCiCover(ciCover > 0 ? 0 : 1500000)}>
+                <div className={cn("border rounded-lg p-3 relative transition-colors", ciCover > 0 ? "border-brand-orange bg-orange-50/20" : "border-gray-200", !wop && ciCover === 0 && "hover:border-orange-200", wop && "opacity-50")}>
+                  <div className={cn("flex justify-between items-start mb-2", !wop && "cursor-pointer")} onClick={() => { if (!wop) setCiCover(ciCover > 0 ? 0 : 1500000) }}>
                     <span className="text-[10px] font-bold text-gray-700 leading-tight pr-4">Critical Illness Cover</span>
                     <div className={cn("w-3 h-3 rounded text-[8px] flex items-center justify-center border", ciCover > 0 ? "bg-brand-orange border-brand-orange text-white" : "border-gray-300")}>
                       {ciCover > 0 && "✓"}
@@ -233,8 +336,8 @@ export default function IProtectGoalCard({
                 </div>
 
                 {/* Accidental Death Cover */}
-                <div className={cn("border rounded-lg p-3 relative transition-colors", adcCover > 0 ? "border-brand-orange bg-orange-50/20" : "border-gray-200 hover:border-orange-200")}>
-                  <div className="flex justify-between items-start mb-2 cursor-pointer" onClick={() => setAdcCover(adcCover > 0 ? 0 : 5000000)}>
+                <div className={cn("border rounded-lg p-3 relative transition-colors", adcCover > 0 ? "border-brand-orange bg-orange-50/20" : "border-gray-200", !wop && adcCover === 0 && "hover:border-orange-200", wop && "opacity-50")}>
+                  <div className={cn("flex justify-between items-start mb-2", !wop && "cursor-pointer")} onClick={() => { if (!wop) setAdcCover(adcCover > 0 ? 0 : 5000000) }}>
                     <span className="text-[10px] font-bold text-gray-700 leading-tight pr-4">Accidental Death Cover</span>
                     <div className={cn("w-3 h-3 rounded text-[8px] flex items-center justify-center border", adcCover > 0 ? "bg-brand-orange border-brand-orange text-white" : "border-gray-300")}>
                       {adcCover > 0 && "✓"}
@@ -254,8 +357,8 @@ export default function IProtectGoalCard({
                 </div>
 
                 {/* Accidental TPD */}
-                <div className={cn("border rounded-lg p-3 relative transition-colors", atpdCover > 0 ? "border-brand-orange bg-orange-50/20" : "border-gray-200 hover:border-orange-200")}>
-                  <div className="flex justify-between items-start mb-2 cursor-pointer" onClick={() => setAtpdCover(atpdCover > 0 ? 0 : 5000000)}>
+                <div className={cn("border rounded-lg p-3 relative transition-colors", atpdCover > 0 ? "border-brand-orange bg-orange-50/20" : "border-gray-200", !wop && atpdCover === 0 && "hover:border-orange-200", wop && "opacity-50")}>
+                  <div className={cn("flex justify-between items-start mb-2", !wop && "cursor-pointer")} onClick={() => { if (!wop) setAtpdCover(atpdCover > 0 ? 0 : 5000000) }}>
                     <span className="text-[10px] font-bold text-gray-700 leading-tight pr-4">Accidental Total & Permanent Disability</span>
                     <div className={cn("w-3 h-3 rounded text-[8px] flex items-center justify-center border", atpdCover > 0 ? "bg-brand-orange border-brand-orange text-white" : "border-gray-300")}>
                       {atpdCover > 0 && "✓"}
@@ -275,7 +378,15 @@ export default function IProtectGoalCard({
                 </div>
 
                 {/* Waiver of Premium */}
-                <div className={cn("border rounded-lg p-3 relative transition-colors cursor-pointer", wop ? "border-brand-orange bg-orange-50/20" : "border-gray-200 hover:border-orange-200")} onClick={() => setWop(!wop)}>
+                <div className={cn("border rounded-lg p-3 relative transition-colors cursor-pointer", wop ? "border-brand-orange bg-orange-50/20" : "border-gray-200 hover:border-orange-200")} onClick={() => {
+                  const newWop = !wop;
+                  setWop(newWop);
+                  if (newWop) {
+                    setCiCover(0);
+                    setAdcCover(0);
+                    setAtpdCover(0);
+                  }
+                }}>
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-[10px] font-bold text-gray-700 leading-tight pr-4">Waiver of Premium(WOP)</span>
                     <div className={cn("w-3 h-3 rounded text-[8px] flex items-center justify-center border", wop ? "bg-brand-orange border-brand-orange text-white" : "border-gray-300")}>
@@ -303,6 +414,12 @@ export default function IProtectGoalCard({
                   
                   // Hide limited pay options if they exceed the cover term
                   if (p.years > regularYears) return null
+
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, totalInvested);
+    }
+  }, [totalInvested, result?.goalId || goal?.id, setCardInvestment]);
 
                   return (
                     <div 
@@ -340,6 +457,33 @@ export default function IProtectGoalCard({
                     </div>
                   )
                 })}
+              </div>
+            </div>
+
+            {/* Financial Summary */}
+            <div className="mt-5 p-4 rounded-xl bg-gray-50 border border-gray-200">
+              <h4 className="text-xs font-bold text-gray-800 mb-3 uppercase tracking-wider">Financial Summary</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[10px] text-gray-500 font-bold mb-1">Total Premium Paid</div>
+                  <div className="text-lg font-display font-bold text-gray-900">{isSimulating ? "..." : formatExactCurrency(totalInvested)}</div>
+                  <div className="text-[9px] text-gray-400">Over {paymentTermMultipliers[paymentTerm].years} years</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500 font-bold mb-1">Guaranteed Payout</div>
+                  <div className="text-lg font-display font-bold text-brand-orange">
+                    {isSimulating ? "..." : refundPremium ? formatExactCurrency(totalInvested) : "₹0"}
+                  </div>
+                  <div className="text-[9px] text-gray-400">
+                    {refundPremium ? "If you survive till age 60" : "Pure term (No survival benefit)"}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-gray-500 font-bold">Life Cover (On Death)</span>
+                  <span className="text-sm font-bold text-gray-900">{formatExactCurrency(lifeCover)}</span>
+                </div>
               </div>
             </div>
 

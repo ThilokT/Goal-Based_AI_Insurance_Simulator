@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn } from '../../lib/utils'
 import type { SimulationResult, LifeGoal, UserProfile, WhatIfParams } from '../../types'
@@ -73,6 +74,8 @@ export default function ProtectNGainCard({
   isEven,
   catColor
 }: ProtectNGainCardProps) {
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+
   
   // State
   const [lifeCover, setLifeCover] = useState(10000000)
@@ -139,6 +142,12 @@ export default function ProtectNGainCard({
   const policyTermOptions = Array.from({ length: 31 }, (_, i) => i + 10) // 10 to 40
   const payForOptions = [5, 6, 7, 8, 9, 10, 11, 12]
 
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, investablePremium * payFor);
+    }
+  }, [investablePremium * payFor, result?.goalId || goal?.id, setCardInvestment]);
+
   return (
     <motion.div 
       key={result.goalId} 
@@ -172,10 +181,10 @@ export default function ProtectNGainCard({
           <div className="flex justify-between items-start">
             <div>
               <p className="text-[10px] font-bold text-red-600 tracking-wider uppercase mb-1">
-                Age {event?.age ?? profile?.age ?? 30} • Protect N Gain
+                Age {event?.age ?? profile?.age ?? 30} • {result.recommendedProductCategory || 'Protect N Gain'}
               </p>
-              <h3 className="font-display font-bold text-gray-900 text-xl leading-tight">ICICI Pru Protect N Gain</h3>
-              <p className="text-sm text-gray-500 mt-1">High Life Cover + Market Linked Return</p>
+              <h3 className="font-display font-bold text-gray-900 text-xl leading-tight">{goal?.label}</h3>
+              <p className="text-sm text-gray-500 mt-1">{result.recommendedProductName || 'ICICI Pru Protect N Gain'}</p>
             </div>
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0 bg-red-50 text-brand-orange border border-red-100 shadow-sm">
               {goal?.icon ?? '🎯'}
@@ -322,10 +331,17 @@ export default function ProtectNGainCard({
               </div>
             </div>
             
+            {/* Total Invested Summary */}
+            <div className="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-200 mt-auto">
+              <div>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total Amount Invested</p>
+                <p className="text-xs text-gray-600 font-medium">Over {payFor} years</p>
+              </div>
+              <div className="text-lg font-display font-bold text-gray-900">
+                {formatAmount(investablePremium * payFor)}
+              </div>
+            </div>
 
-            
-
-            
           </div>
 
         </div>

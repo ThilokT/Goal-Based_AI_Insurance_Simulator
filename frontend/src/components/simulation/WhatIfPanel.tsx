@@ -37,7 +37,7 @@ function SliderRow({
 }
 
 export default function WhatIfPanel() {
-  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating } = useAppStore()
+  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating, cardInvestments } = useAppStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Use chat context profile if available
@@ -174,39 +174,6 @@ export default function WhatIfPanel() {
           </div>
 
           <div className="space-y-5">
-            <SliderRow
-              label="Inflation assumption"
-              value={whatIfParams.inflationRate}
-              min={4} max={12} unit="%"
-              onChange={v => update('inflationRate', v)}
-            />
-            <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200">
-              <div>
-                <p className="text-xs font-medium text-gray-700">Enable SIP (Monthly Investment)</p>
-                <p className="text-[10px] text-gray-400">Calculate required monthly SIP</p>
-              </div>
-              <button
-                onClick={() => update('enableSip', !whatIfParams.enableSip)}
-                className={cn(
-                  'relative w-10 h-5 rounded-full transition-colors',
-                  whatIfParams.enableSip ? 'bg-brand-orange' : 'bg-gray-200'
-                )}
-              >
-                <motion.div
-                  animate={{ x: whatIfParams.enableSip ? 20 : 2 }}
-                  className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow"
-                />
-              </button>
-            </div>
-
-            {whatIfParams.enableSip && (
-              <SliderRow
-                label="Annual SIP step-up"
-                value={whatIfParams.annualIncrementPercent}
-                min={0} max={20} unit="%"
-                onChange={v => update('annualIncrementPercent', v)}
-              />
-            )}
 
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -226,24 +193,15 @@ export default function WhatIfPanel() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200">
-              <div>
-                <p className="text-xs font-medium text-gray-700">Child abroad education</p>
-                <p className="text-[10px] text-gray-400">Adds 2.2x to education corpus</p>
-              </div>
-              <button
-                onClick={() => update('childEducationAbroad', !whatIfParams.childEducationAbroad)}
-                className={cn(
-                  'relative w-10 h-5 rounded-full transition-colors',
-                  whatIfParams.childEducationAbroad ? 'bg-brand-orange' : 'bg-gray-200'
+            <div className="bg-orange-50/50 p-3 rounded-lg border border-orange-100 flex items-center justify-between">
+              <label className="text-xs font-medium text-gray-700">Total Invested</label>
+              <span className="text-sm font-bold text-[#b73238]">
+                {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
+                  Object.values(cardInvestments).reduce((a, b) => a + (Number(b) || 0), 0)
                 )}
-              >
-                <motion.div
-                  animate={{ x: whatIfParams.childEducationAbroad ? 20 : 2 }}
-                  className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow"
-                />
-              </button>
+              </span>
             </div>
+
 
             {activeGoals.length > 0 && (
               <div className="pt-4 border-t border-gray-100">

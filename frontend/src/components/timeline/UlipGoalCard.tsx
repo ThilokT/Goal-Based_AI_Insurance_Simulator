@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn } from '../../lib/utils'
 import type { SimulationResult, LifeGoal, UserProfile, WhatIfParams } from '../../types'
@@ -69,6 +70,8 @@ export default function UlipGoalCard({
   isEven,
   catColor
 }: UlipGoalCardProps) {
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+
   
   // State
   const [investAmount, setInvestAmount] = useState(12000)
@@ -139,6 +142,12 @@ export default function UlipGoalCard({
   const durationOptions = [5, 7, 10, 12, 15]
   const termOptions = [10, 12, 15, 20, 25, 30]
 
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, totalPremium);
+    }
+  }, [totalPremium, result?.goalId || goal?.id, setCardInvestment]);
+
   return (
     <motion.div 
       key={result?.goalId || goal.id} 
@@ -170,9 +179,9 @@ export default function UlipGoalCard({
               {goal?.icon}
             </div>
             <div>
-              <span className="text-[10px] font-bold tracking-wider text-[#003366] uppercase">Age {event?.age || 30} • ULIP Plan</span>
-              <h3 className="font-extrabold text-gray-900 text-lg leading-tight">ICICI Pru Signature Assure</h3>
-              <p className="text-[10px] text-gray-500">{goal?.label || 'Wealth Creation'} • Market Linked Return</p>
+              <span className="text-[10px] font-bold tracking-wider text-[#003366] uppercase">Age {event?.age || 30} • {result.recommendedProductCategory || 'ULIP Plan'}</span>
+              <h3 className="font-extrabold text-gray-900 text-lg leading-tight">{goal?.label}</h3>
+              <p className="text-xs text-gray-500 font-medium">{result.recommendedProductName || 'ICICI Pru Signature Assure'}</p>
             </div>
           </div>
 
@@ -330,6 +339,17 @@ export default function UlipGoalCard({
                     <div className="text-[9px] text-gray-600 font-medium mb-1.5">Regular Income <span className="text-[7px]">3</span></div>
                     <div className="text-xs font-bold text-gray-800 mt-2.5">10% {formatAmount(annualPremium)}</div>
                   </div>
+                </div>
+              </div>
+
+              {/* Total Invested Summary */}
+              <div className="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-200 mt-5 rounded-b-xl mx-[-20px] mb-[-20px]">
+                <div>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total Amount Invested</p>
+                  <p className="text-xs text-gray-600 font-medium">Over {duration} years</p>
+                </div>
+                <div className="text-lg font-display font-bold text-gray-900">
+                  {formatAmount(totalPremium)}
                 </div>
               </div>
 
