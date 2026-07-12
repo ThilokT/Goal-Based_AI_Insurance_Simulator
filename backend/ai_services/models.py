@@ -76,6 +76,8 @@ class FinancialGoal(BaseModel):
     target_year: Optional[int] = Field(None, description="Year by which goal should be achieved")
     priority: Optional[int] = Field(1, description="1=highest, 5=lowest")
     monthly_contribution: Optional[float] = Field(None, description="Monthly savings towards this goal")
+    existing_savings: Optional[float] = Field(None, description="Dedicated lump sum already saved for this specific goal (INR)")
+    risk_override: Optional[str] = Field(None, description="Specific risk appetite for this goal")
     notes: Optional[str] = None
 
 

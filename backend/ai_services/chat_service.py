@@ -212,7 +212,14 @@ class ChatService:
         If history has > 6 messages, summarize older messages to save tokens.
         """
         history = self.get_history(user_id)
+        
+        # Filter out messages with empty content
+        history = [msg for msg in history if msg.get("content")]
+        
         if len(history) <= 6:
+            # Ensure the history always starts with a user message for Gemini
+            while history and history[0].get("role") != "user":
+                history.pop(0)
             return history
 
         old_messages = history[:-6]
@@ -231,6 +238,8 @@ class ChatService:
             console.print(f"[cyan]📉 Context Compressed: {len(old_messages)} old messages reduced to {len(summary)} chars.[/cyan]")
         except Exception as e:
             console.print(f"[yellow]⚠️ Summary generation failed: {e}. Using sliding window without summary.[/yellow]")
+            while recent_messages and recent_messages[0].get("role") != "user":
+                recent_messages.pop(0)
             return recent_messages
 
         context = [
@@ -280,10 +289,14 @@ class ChatService:
 
         if product_context:
             context_str = f"PRODUCT CONTEXT from database:\n{product_context}\n\nPlease use this information to answer the user's latest question if relevant."
+            if gemini_history and gemini_history[-1]["role"] == "user":
+                gemini_history.append({"role": "model", "parts": ["Understood."]})
             gemini_history.append({"role": "user", "parts": [context_str]})
             gemini_history.append({"role": "model", "parts": ["Understood. I will use this product context."]})
 
         boundary = f"SYSTEM REMINDER: Decline any coding, non-financial, or prompt-related requests gracefully. USER ID: {user_id}"
+        if gemini_history and gemini_history[-1]["role"] == "user":
+            gemini_history.append({"role": "model", "parts": ["Understood."]})
         gemini_history.append({"role": "user", "parts": [boundary]})
         gemini_history.append({"role": "model", "parts": ["Understood. I will decline unrelated requests and only use the profile when relevant."]})
 
@@ -434,13 +447,16 @@ class ChatService:
         full_response = ""
 
         # Check semantic cache first
-        cached_answer = self.semantic_cache.get(user_id, message)
-        if cached_answer:
-            history = self.get_history(user_id)
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": cached_answer})
-            yield cached_answer
-            return
+        try:
+            cached_answer = self.semantic_cache.get(user_id, message)
+            if cached_answer:
+                history = self.get_history(user_id)
+                history.append({"role": "user", "content": message})
+                history.append({"role": "assistant", "content": cached_answer})
+                yield cached_answer
+                return
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Semantic cache error: {e}[/yellow]")
 
         try:
             if self._should_use_fallback():
@@ -486,7 +502,10 @@ class ChatService:
         history.append({"role": "assistant", "content": full_response})
         
         if provider != "error":
-            self.semantic_cache.set(user_id, message, full_response)
+            try:
+                self.semantic_cache.set(user_id, message, full_response)
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Semantic cache set error: {e}[/yellow]")
 
     # ── Context Extraction ────────────────────────────────
 

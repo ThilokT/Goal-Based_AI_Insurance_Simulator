@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Eye, EyeOff, ArrowRight, Loader2, Shield, TrendingUp, Target } from 'lucide-react'
-import { mockSignIn, mockSignUp } from '../../mocks/auth'
 import { useAppStore } from '../../store'
+import { api, ApiError } from '../../lib/apiClient'
+import type { TokenResponse } from '../../types/api'
+import { mapTokenResponseToAuthUser } from '../../types/api'
 
 type Mode = 'login' | 'signup' | 'forgot'
 
 const FEATURES = [
-  { icon: Target,     text: 'Goal-based financial planning personalised to your life' },
+  { icon: Target, text: 'Goal-based financial planning personalised to your life' },
   { icon: TrendingUp, text: 'AI-powered product matching across 5 insurance categories' },
-  { icon: Shield,     text: 'IRDAI-regulated products from ICICI Prudential' },
+  { icon: Shield, text: 'IRDAI-regulated products from ICICI Prudential' },
 ]
 
 export default function AuthPage() {
@@ -22,7 +24,7 @@ export default function AuthPage() {
   const [error, setError] = useState('')
   const [forgotSent, setForgotSent] = useState(false)
 
-  const { setUser } = useAppStore()
+  const { setUser, setTokens } = useAppStore()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -30,17 +32,29 @@ export default function AuthPage() {
     setLoading(true)
     try {
       if (mode === 'login') {
-        const user = await mockSignIn(email, password)
-        setUser(user)
+        const res = await api.post<TokenResponse>('/auth/login', { email, password }, { noAuth: true })
+        setTokens(res.access_token, res.refresh_token)
+        // Fetch user profile to get full_name
+        const profile = await api.get<{ full_name?: string }>('/users/me', {
+          headers: { Authorization: `Bearer ${res.access_token}` },
+          noAuth: true,
+        }).catch(() => ({ full_name: undefined }))
+        setUser(mapTokenResponseToAuthUser(res, profile.full_name ?? undefined))
       } else if (mode === 'signup') {
-        const user = await mockSignUp(email, password, name)
-        setUser(user)
+        const res = await api.post<TokenResponse>('/auth/signup', { email, password, full_name: name }, { noAuth: true })
+        setTokens(res.access_token, res.refresh_token)
+        setUser(mapTokenResponseToAuthUser(res, name))
       } else {
+        // Forgot password — no backend endpoint yet, simulate
         await new Promise(r => setTimeout(r, 800))
         setForgotSent(true)
       }
-    } catch (err: any) {
-      setError(err.message ?? 'Something went wrong. Please try again.')
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        setError(err.detail)
+      } else {
+        setError((err as Error).message ?? 'Something went wrong. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -128,8 +142,8 @@ export default function AuthPage() {
               </h2>
               <p className="text-sm text-gray-500 mt-1">
                 {mode === 'login' ? 'Sign in to your LifeMap account' :
-                 mode === 'signup' ? 'Start your financial planning journey' :
-                 'We will send a reset link to your email'}
+                  mode === 'signup' ? 'Start your financial planning journey' :
+                    'We will send a reset link to your email'}
               </p>
             </div>
 

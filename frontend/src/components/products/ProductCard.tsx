@@ -21,8 +21,9 @@ const RETURN_TYPE_LABEL: Record<string, { label: string; color: string }> = {
 }
 
 export default function ProductCard({ product, compareMode, selected, onSelect, delay = 0 }: ProductCardProps) {
-  const meta = CATEGORY_META[product.category]
-  const rtMeta = RETURN_TYPE_LABEL[product.returnType]
+  const normalizedCategory = product.category?.toLowerCase() || 'protection'
+  const meta = CATEGORY_META[normalizedCategory] || CATEGORY_META['protection']
+  const rtMeta = RETURN_TYPE_LABEL[product.returnType] || RETURN_TYPE_LABEL['guaranteed']
 
   return (
     <motion.div
@@ -40,10 +41,10 @@ export default function ProductCard({ product, compareMode, selected, onSelect, 
       {/* Top accent bar */}
       <div
         className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl"
-        style={{ background: product.category === 'protection' ? '#F36F21' :
-          product.category === 'ulip' ? '#003366' :
-          product.category === 'participating' ? '#C9A84C' :
-          product.category === 'non-participating' ? '#22C55E' : '#9333EA' }}
+        style={{ background: normalizedCategory === 'protection' ? '#F36F21' :
+          normalizedCategory === 'ulip' ? '#003366' :
+          normalizedCategory === 'participating' ? '#C9A84C' :
+          normalizedCategory === 'non-participating' ? '#22C55E' : '#9333EA' }}
       />
 
       <div className="pt-2">

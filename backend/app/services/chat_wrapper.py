@@ -89,8 +89,13 @@ async def stream_chat_response(
                     await asyncio.sleep(0.02)
 
         if not full_response:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Empty response from AI'})}\n\n"
-            return
+            error_msg = "I'm sorry, I couldn't generate a response for that due to safety filters or technical limits. Could you please rephrase?"
+            # Stream the error message gracefully
+            tokens = re.split(r'(\s+)', error_msg)
+            for token in tokens:
+                if token:
+                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            full_response = error_msg
 
         # Sanitize the full response before sending the final 'done' event
         full_response = _output_sanitizer.sanitize(full_response)

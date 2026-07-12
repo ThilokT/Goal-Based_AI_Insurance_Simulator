@@ -1,9 +1,14 @@
+import { useRef, useCallback, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Sliders, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
+import { Sliders, RefreshCw, TrendingUp, TrendingDown, WifiOff } from 'lucide-react'
 import { useAppStore } from '../../store'
 import { formatCurrency } from '../../lib/utils'
-import { runSimulation } from '../../mocks/simulation'
+import { api, ApiError } from '../../lib/apiClient'
+import type { SimulateRequest, BackendSimulateResponse } from '../../types/api'
+import { mapBackendSimulation } from '../../types/api'
 import { cn } from '../../lib/utils'
+import type { SimulationResult } from '../../types'
+import { runSimulation } from '../../mocks/simulation'
 
 function SliderRow({
   label, value, min, max, step = 1, unit = '',
@@ -32,15 +37,93 @@ function SliderRow({
 }
 
 export default function WhatIfPanel() {
-  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults } = useAppStore()
+  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating, cardInvestments } = useAppStore()
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function update(key: keyof typeof whatIfParams, value: number | boolean) {
-    const next = { ...whatIfParams, [key]: value }
-    setWhatIfParams({ [key]: value })
-    if (profile) {
-      const results = runSimulation(profile, next, goals)
-      setSimulationResults(results)
+  // Use chat context profile if available
+  const activeChatContext = conversationId ? chatContexts[conversationId] : null
+  const activeProfile = activeChatContext?.profile ? { ...profile, ...activeChatContext.profile } : profile
+  const activeGoals = (activeChatContext?.goals && activeChatContext.goals.length > 0)
+    ? activeChatContext.goals
+    : goals
+
+  // Debounced API simulation call — now sends what-if params
+  const runApiSimulation = useCallback(async (params: typeof whatIfParams) => {
+    if (!activeProfile || activeGoals.length === 0) return
+
+    const payload: SimulateRequest = {
+      age: activeProfile.age,
+      annual_income: activeProfile.income ? activeProfile.income * 12 : undefined,
+      monthly_expenses: activeProfile.monthlyExpenses,
+      dependents: activeProfile.familySize,
+      risk_appetite: activeProfile.riskAppetite,
+      goals: activeGoals.map(g => ({
+        goal_type: g.label,
+        target_amount: params.goalTargetAmounts?.[g.id] ?? g.corpusNeeded,
+        target_year: params.goalTargetAges?.[g.id] ?? g.targetAge,
+        priority: 1,
+        existing_savings: params.goalExistingSavings?.[g.id] || 0,
+        risk_override: params.goalRiskAppetites?.[g.id],
+      })),
+      // ── What-If params wired to backend ──
+      inflation_rate: params.inflationRate / 100,
+      existing_savings: params.existingSavings,
+      annual_increment_percent: params.annualIncrementPercent / 100,
+      retirement_age: params.retirementAge,
+      child_education_abroad: params.childEducationAbroad,
     }
+
+    setIsSimulating(true)
+    try {
+      const res = await api.post<BackendSimulateResponse>('/api/simulate', payload)
+      const mapped: SimulationResult[] = res.goals.map(goalResult => {
+        const result = mapBackendSimulation(goalResult)
+        const localGoal = activeGoals.find(g => g.label === goalResult.goal_type)
+        if (localGoal) result.goalId = localGoal.id
+        return result
+      })
+      setSimulationResults(mapped)
+      if (res.yearly_projections) {
+        setYearlyProjections(
+          res.yearly_projections.map((p: any) => ({
+            year: p.year,
+            age: p.age,
+            totalInvested: p.total_invested,
+            projectedCorpus: p.projected_corpus,
+          }))
+        )
+      }
+      setIsOffline(false)
+    } catch {
+      // Fall back to offline
+      console.warn('Simulation API unavailable, setting offline state')
+      setIsOffline(true)
+    } finally {
+      setIsSimulating(false)
+    }
+  }, [activeProfile, activeGoals, setSimulationResults, setIsOffline, setIsSimulating])
+
+  function update(key: keyof typeof whatIfParams, value: number | boolean | Record<string, number>) {
+    const next = { ...whatIfParams, [key]: value } as typeof whatIfParams
+    setWhatIfParams({ [key]: value })
+
+    // Set simulating to true immediately to show Calculating UI while dragging sliders
+    setIsSimulating(true)
+
+    // Debounce API calls (500ms)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      if (activeProfile) {
+        runApiSimulation(next).catch(() => {
+          setIsOffline(true)
+        })
+      }
+    }, 500)
+  }
+
+  function updateGoalAge(goalId: string, age: number) {
+    const nextAges = { ...(whatIfParams.goalTargetAges || {}), [goalId]: age }
+    update('goalTargetAges', nextAges)
   }
 
   function reset() {
@@ -50,25 +133,40 @@ export default function WhatIfPanel() {
       inflationRate: 6,
       existingSavings: 500_000,
       annualIncrementPercent: 8,
+      goalTargetAges: {},
+      goalTargetAmounts: {},
+      goalExistingSavings: {},
+      enableSip: true,
+      goalRiskAppetites: {}
     }
     setWhatIfParams(defaults)
-    if (profile) setSimulationResults(runSimulation(profile, defaults, goals))
+    
+    // Optimistic reset
+    if (activeProfile && activeGoals.length > 0) {
+      const { goals: offlineResults, yearlyProjections } = runSimulation(activeProfile as any, defaults, activeGoals)
+      setSimulationResults(offlineResults)
+      setYearlyProjections(yearlyProjections)
+    }
+    if (activeProfile) {
+      runApiSimulation(defaults).catch(() => {
+        setIsOffline(true)
+      })
+    }
   }
 
-  const totalCorpus = simulationResults.reduce((s, r) => s + r.corpusNeeded, 0)
-  const totalCovered = simulationResults.reduce((s, r) => s + r.coveredAmount, 0)
-  const totalGap = simulationResults.reduce((s, r) => s + r.gap, 0)
-  const totalPremium = simulationResults.reduce((s, r) => s + r.monthlyPremium, 0)
-
   return (
-    <div className="grid lg:grid-cols-3 gap-6">
+    <div className="space-y-4">
       {/* Controls */}
-      <div className="lg:col-span-1 space-y-4">
-        <div className="card">
+      <div className="card">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Sliders size={16} className="text-brand-orange" />
               <h3 className="font-display font-semibold text-gray-900 text-sm">What-If Controls</h3>
+              {isOffline && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-red-500 font-medium bg-red-50 px-2 py-0.5 rounded">
+                  <WifiOff size={9} /> API Offline
+                </span>
+              )}
             </div>
             <button onClick={reset} className="btn-ghost text-xs py-1 px-2">
               <RefreshCw size={12} /> Reset
@@ -76,115 +174,58 @@ export default function WhatIfPanel() {
           </div>
 
           <div className="space-y-5">
-            <SliderRow
-              label="Retirement age"
-              value={whatIfParams.retirementAge}
-              min={45} max={70}
-              onChange={v => update('retirementAge', v)}
-            />
-            <SliderRow
-              label="Inflation assumption"
-              value={whatIfParams.inflationRate}
-              min={4} max={12} unit="%"
-              onChange={v => update('inflationRate', v)}
-            />
-            <SliderRow
-              label="Existing savings"
-              value={whatIfParams.existingSavings}
-              min={0} max={5_000_000} step={50000}
-              unit=""
-              onChange={v => update('existingSavings', v)}
-            />
 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-medium text-gray-600">Existing savings</label>
                 <span className="text-xs font-bold text-brand-navy">{formatCurrency(whatIfParams.existingSavings)}</span>
               </div>
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200">
-              <div>
-                <p className="text-xs font-medium text-gray-700">Child abroad education</p>
-                <p className="text-[10px] text-gray-400">Adds 2.2x to education corpus</p>
+              <input
+                type="range"
+                min={0} max={5_000_000} step={50000}
+                value={whatIfParams.existingSavings}
+                onChange={e => update('existingSavings', +e.target.value)}
+                className="w-full accent-brand-orange h-1.5"
+              />
+              <div className="flex justify-between mt-0.5">
+                <span className="text-[10px] text-gray-400">₹0</span>
+                <span className="text-[10px] text-gray-400">₹50L</span>
               </div>
-              <button
-                onClick={() => update('childEducationAbroad', !whatIfParams.childEducationAbroad)}
-                className={cn(
-                  'relative w-10 h-5 rounded-full transition-colors',
-                  whatIfParams.childEducationAbroad ? 'bg-brand-orange' : 'bg-gray-200'
+            </div>
+
+            <div className="bg-orange-50/50 p-3 rounded-lg border border-orange-100 flex items-center justify-between">
+              <label className="text-xs font-medium text-gray-700">Total Invested</label>
+              <span className="text-sm font-bold text-[#b73238]">
+                {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
+                  Object.values(cardInvestments).reduce((a, b) => a + (Number(b) || 0), 0)
                 )}
-              >
-                <motion.div
-                  animate={{ x: whatIfParams.childEducationAbroad ? 20 : 2 }}
-                  className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow"
-                />
-              </button>
+              </span>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Impact summary */}
-      <div className="lg:col-span-2 space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Total corpus needed', value: formatCurrency(totalCorpus), sub: 'across all goals', color: 'text-brand-navy' },
-            { label: 'Total covered',       value: formatCurrency(totalCovered), sub: 'by recommended products', color: 'text-green-600' },
-            { label: 'Total gap',           value: formatCurrency(totalGap), sub: 'needs to be filled', color: 'text-red-500' },
-            { label: 'Combined premium',    value: `₹${(totalPremium / 1000).toFixed(1)}K/mo`, sub: 'estimated monthly outgo', color: 'text-brand-orange' },
-          ].map(stat => (
-            <div key={stat.label} className="card p-4">
-              <p className="section-label mb-2">{stat.label}</p>
-              <p className={`text-xl font-display font-bold ${stat.color}`}>{stat.value}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{stat.sub}</p>
-            </div>
-          ))}
-        </div>
 
-        <div className="card">
-          <h3 className="font-display font-semibold text-gray-900 text-sm mb-4">Goal-wise Impact</h3>
-          <div className="space-y-4">
-            {simulationResults.map(result => {
-              const goal = goals.find(g => g.id === result.goalId)
-              const pct = Math.round((result.coveredAmount / result.corpusNeeded) * 100)
-              const isGood = pct >= 80
-              return (
-                <div key={result.goalId}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{goal?.icon}</span>
-                      <span className="text-xs font-medium text-gray-700">{goal?.label}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isGood
-                        ? <TrendingUp size={13} className="text-green-500" />
-                        : <TrendingDown size={13} className="text-red-400" />
-                      }
-                      <span className={`text-xs font-bold ${isGood ? 'text-green-600' : 'text-red-500'}`}>{pct}%</span>
-                    </div>
-                  </div>
-                  <div className="relative w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <motion.div
-                      className={cn('h-full rounded-full', isGood ? 'bg-green-400' : 'bg-brand-orange')}
-                      animate={{ width: `${Math.min(pct, 100)}%` }}
-                      transition={{ duration: 0.5, ease: 'easeOut' }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[10px] text-gray-400">
-                      Corpus: {formatCurrency(result.corpusNeeded)}
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Gap: <span className="text-red-400 font-medium">{formatCurrency(result.gap)}</span>
-                    </span>
-                  </div>
+            {activeGoals.length > 0 && (
+              <div className="pt-4 border-t border-gray-100">
+                <h4 className="text-xs font-semibold text-gray-900 mb-3">Goal Target Ages</h4>
+                <div className="space-y-4">
+                  {activeGoals.map(g => {
+                    const currentTarget = whatIfParams.goalTargetAges?.[g.id] ?? g.targetAge
+                    return (
+                      <SliderRow
+                        key={g.id}
+                        label={g.label}
+                        value={currentTarget}
+                        min={(activeProfile?.age || 18) + 1}
+                        max={85}
+                        unit=" yrs"
+                        onChange={v => updateGoalAge(g.id, v)}
+                      />
+                    )
+                  })}
                 </div>
-              )
-            })}
+              </div>
+            )}
           </div>
         </div>
-      </div>
     </div>
   )
 }

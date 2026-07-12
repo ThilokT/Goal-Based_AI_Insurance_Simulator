@@ -68,15 +68,15 @@ class ProductVectorStore:
             metadata={"hnsw:space": "cosine"},  # cosine similarity
         )
         
-        console.print("[dim]⏳ Loading local embedding model (all-MiniLM-L6-v2)...[/dim]")
+        console.print("[dim]Loading local embedding model (all-MiniLM-L6-v2)...[/dim]")
         self.embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         
         console.print(
-            f"[green]✅ ChromaDB collection '{collection_name}' ready "
+            f"[green] ChromaDB collection '{collection_name}' ready "
             f"({self.collection.count()} documents)[/green]"
         )
 
-    # ── Embedding Generation ──────────────────────────────
+    #  Embedding Generation 
 
     def _generate_embedding(self, text: str) -> list[float]:
         """
@@ -137,7 +137,7 @@ class ProductVectorStore:
 
         return "\n".join(parts)
 
-    # ── Indexing ──────────────────────────────────────────
+    #  Indexing 
 
     def index_products(self, products: list[dict]) -> int:
         """
@@ -149,7 +149,7 @@ class ProductVectorStore:
         Returns:
             Number of products successfully indexed.
         """
-        console.print(f"\n[cyan]📥 Indexing {len(products)} products into ChromaDB...[/cyan]")
+        console.print(f"\n[cyan] Indexing {len(products)} products into ChromaDB...[/cyan]")
 
         ids = []
         documents = []
@@ -165,7 +165,7 @@ class ProductVectorStore:
             # Skip if already indexed
             existing = self.collection.get(where={"product_id": product_id})
             if existing and existing["ids"]:
-                console.print(f"  [dim]⏭️  Skipping '{product.get('product_name', product.get('name', ''))}' (already indexed)[/dim]")
+                console.print(f"  [dim]  Skipping '{product.get('product_name', product.get('name', ''))}' (already indexed)[/dim]")
                 continue
 
             # Fallback to _product_to_text if raw_chunks is missing (e.g. seed data)
@@ -195,10 +195,10 @@ class ProductVectorStore:
                             ),
                         })
                 except Exception as e:
-                    console.print(f"  [red]❌ Embedding failed for product {product_id} batch {i}: {e}[/red]")
+                    console.print(f"  [red] Embedding failed for product {product_id} batch {i}: {e}[/red]")
 
             console.print(
-                f"  [green]✅ Embedded: {product.get('product_name', product.get('name', ''))} ({len(raw_chunks)} chunks)[/green]"
+                f"  [green] Embedded: {product.get('product_name', product.get('name', ''))} ({len(raw_chunks)} chunks)[/green]"
             )
 
         if ids:
@@ -209,13 +209,13 @@ class ProductVectorStore:
                 metadatas=metadatas,
             )
             console.print(
-                f"\n[bold green]🎉 Indexed {len(ids)} new products. "
+                f"\n[bold green] Indexed {len(ids)} new products. "
                 f"Total in collection: {self.collection.count()}[/bold green]"
             )
 
         return len(ids)
 
-    # ── Semantic Search ───────────────────────────────────
+    #  Semantic Search 
 
     @cached(ttl_seconds=1800, key_prefix="vectorstore")
     def search_products(
@@ -279,7 +279,7 @@ class ProductVectorStore:
                 ))
 
         console.print(
-            f"[cyan]🔍 Search '{query}' → {len(matches)} results[/cyan]"
+            f"[cyan] Search '{query}'  {len(matches)} results[/cyan]"
         )
         return matches
 
@@ -298,10 +298,10 @@ class ProductVectorStore:
     def delete_collection(self):
         """Delete the entire collection (useful for re-indexing)."""
         self.client.delete_collection(self.collection_name)
-        console.print(f"[yellow]🗑️  Deleted collection '{self.collection_name}'[/yellow]")
+        console.print(f"[yellow]  Deleted collection '{self.collection_name}'[/yellow]")
 
 
-# ── CLI Entry Point ───────────────────────────────────────
+#  CLI Entry Point 
 def main():
     """Index seed products and test search."""
     seed_path = Path(__file__).parent.parent / "data" / "seed_products.json"

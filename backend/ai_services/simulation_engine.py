@@ -13,11 +13,15 @@ Usage:
     engine = SimulationEngine()
     result = engine.simulate_goal(goal, user_age=30)
 """
+import re
 import numpy as np
 from datetime import datetime
 from typing import Optional
+from functools import lru_cache
 
 from rich.console import Console
+
+from ai_services.vectorstore import get_vectorstore
 
 from ai_services.config import (
     DEFAULT_INFLATION_RATE,
@@ -35,125 +39,174 @@ from ai_services.models import (
 
 console = Console()
 
-# ── Brochure-Backed Return Rate Matrix ────────────────────
-# Derived from ICICI Pru Signature brochure fund data:
-#   - Equity funds (Multi Cap Growth, Focus 50): ~12-14% gross, ~11% net of 1.35% FMC
-#   - Balanced funds (Multi Cap Balanced, Active Allocation): ~9-10% net
-#   - Debt funds (Income Fund, Secure Opps): ~7-8% net
-#   - Money Market: ~5-6% net
+# ── Product Calculation Strategies ─────────────────────────
+# Four distinct strategies based on ICICI Prudential product categories:
 #
-# Life Cycle Strategy 2 age-based allocation:
-#   Age ≤25: 80% equity / 20% debt
-#   26-35:   75% / 25%
-#   36-45:   65% / 35%
-#   46-55:   55% / 45%
-#   56-65:   45% / 55%
-#   66+:     35% / 65%
-
-# ── ICICI Pru Signature: 5-Year Historical Avg Returns ─────
-# Source: iciciprulife.com/fund-performance (as on June 25, 2026)
+#   ULIP    → CAGR / Geometric Returns (market-linked, risk-based)
+#   NON_PAR → IRR / Cash-Flow Modeling (guaranteed, flat rate)
+#   ANNUITY → NPV / Reverse Calculation (guaranteed pension yield)
+#   TERM    → Pure Risk (0% return, sum assured only)
 #
-# Equity (avg of 8 mature funds with 5yr data):
-#   Focus 50 (8.24%), Bluechip (9.30%), Maximiser V (10.57%),
-#   Maximise India (10.90%), India Growth (11.05%),
-#   Multi Cap Growth (11.46%), Opportunities (12.22%),
-#   Value Enhancer (14.19%)  →  Avg = 10.99%
+# Reference: helper_info/product_calculation_strategy.md
+
+# ── Strategy Type Constants ────────────────────────────────
+STRATEGY_ULIP = "ulip"
+STRATEGY_NON_PAR = "non_par"
+STRATEGY_ANNUITY = "annuity"
+STRATEGY_TERM = "term"
+
+# ── ULIP Fund Data: 5-Year Historical CAGR Averages ───────
+# Source: iciciprulife.com/fund-performance (as on July 07, 2026)
+# Strategy: Simple average of all funds with available 5-Year returns
 #
-# Balanced (avg of 2 funds with 5yr data):
-#   Active Asset Allocation (7.63%), Multi Cap Balanced (8.81%)
-#   →  Avg = 8.22%
-#
-# Debt (avg of 3 funds with 5yr data):
-#   Income Fund (4.77%), Money Market (5.59%),
-#   Secure Opportunities (4.80%)  →  Avg = 5.05%
+# Product 1: ICICI Pru Signature Assure
+#   Equity (8 funds avg): Focus 50 (8.24%), Bluechip (9.30%),
+#     Maximiser V (10.57%), Maximise India (10.90%), India Growth (11.05%),
+#     Multi Cap Growth (11.46%), Opportunities (12.22%), Value Enhancer (14.19%)
+#   Balanced (2 funds avg): Active Asset Allocation (7.63%), Multi Cap Balanced (8.81%)
+#   Debt (3 funds avg): Income (4.77%), Money Market (5.59%), Secure Opps (4.80%)
 
-SIGNATURE_EQUITY_5YR = 0.1099   # 10.99% — avg of 8 equity funds
-SIGNATURE_BALANCED_5YR = 0.0822 # 8.22%  — avg of 2 balanced funds
-SIGNATURE_DEBT_5YR = 0.0505     # 5.05%  — avg of 3 debt funds
+SIGNATURE_EQUITY_5YR = 0.1099    # 10.99%
+SIGNATURE_BALANCED_5YR = 0.0822  # 8.22%
+SIGNATURE_DEBT_5YR = 0.0505      # 5.05%
 
-# Risk appetite → blended return by investment horizon
-# Anchored to the 5-year historical averages above
-RETURN_MATRIX = {
-    # (risk_appetite, horizon_bucket) → blended_annual_return
-    ("conservative", "short"):  SIGNATURE_DEBT_5YR,                # 5.05% — pure debt
-    ("conservative", "medium"): SIGNATURE_DEBT_5YR + 0.005,        # 5.55% — slight equity tilt
-    ("conservative", "long"):   SIGNATURE_DEBT_5YR + 0.010,        # 6.05% — small equity allocation
+# Product 4: ICICI Pru Protect N Gain
+#   Equity (5 funds avg): Health Flexi Growth (11.13%), Health Multiplier (9.10%),
+#     Pension Flexi Growth (10.36%), Pension RICH II (12.15%), RICH II (12.16%)
+#   Balanced (2 funds avg): Active Asset Allocation (7.85%), Multi Cap Balanced (8.96%)
+#   Debt (3 funds avg): Income (5.39%), Money Market (5.67%), Secure Opps (5.30%)
 
-    ("moderate", "short"):      SIGNATURE_BALANCED_5YR - 0.010,    # 7.22% — cautious balanced
-    ("moderate", "medium"):     SIGNATURE_BALANCED_5YR,            # 8.22% — balanced avg
-    ("moderate", "long"):       SIGNATURE_BALANCED_5YR + 0.005,    # 8.72% — balanced with equity tilt
+PROTECT_N_GAIN_EQUITY_5YR = 0.1098    # 10.98%
+PROTECT_N_GAIN_BALANCED_5YR = 0.0841  # 8.41%
+PROTECT_N_GAIN_DEBT_5YR = 0.0545      # 5.45%
 
-    ("aggressive", "short"):    SIGNATURE_EQUITY_5YR - 0.020,      # 8.99% — equity with debt cushion
-    ("aggressive", "medium"):   SIGNATURE_EQUITY_5YR - 0.010,      # 9.99% — mostly equity
-    ("aggressive", "long"):     SIGNATURE_EQUITY_5YR,              # 10.99% — full equity avg
+# Product 5: ICICI Pru Wish (via Health Saver funds)
+#   Equity (5 funds avg): Health Flexi Growth (11.13%), Health Multiplier (9.10%),
+#     Pension Flexi Growth (10.36%), Pension RICH II (12.15%), RICH II (12.16%)
+#   Balanced (2 funds avg): Health Balancer (7.54%), Health Flexi Balanced (9.19%)
+#   Debt (3 funds avg): Health Preserver (5.55%), Health Protector (6.16%), Pension Protector II (6.18%)
+
+WISH_EQUITY_5YR = 0.1098    # 10.98%
+WISH_BALANCED_5YR = 0.0837  # 8.37%
+WISH_DEBT_5YR = 0.0596      # 5.96%
+
+# ── Non-Par & Annuity Fixed Rates ──────────────────────────
+# These products have no market-linked funds.
+# Returns are guaranteed IRR / annuity yield from IRDAI illustration rates.
+
+NON_PAR_IRR = 0.06       # 6.0% — GIFT Pro, SmartKid 360
+ANNUITY_YIELD = 0.065    # 6.5% — GPP Flexi guaranteed pension
+TERM_RETURN = 0.0        # 0.0% — iProtect Smart (pure protection)
+
+# ── ULIP Return Matrices (risk × horizon) ──────────────────
+# Each ULIP product gets its own return matrix.
+# Horizon adjustments: short (<5yr) gets haircut, long (>12yr) stays at base.
+
+SIGNATURE_RETURN_MATRIX = {
+    ("conservative", "short"):  SIGNATURE_DEBT_5YR,                # 5.05%
+    ("conservative", "medium"): SIGNATURE_DEBT_5YR + 0.005,        # 5.55%
+    ("conservative", "long"):   SIGNATURE_DEBT_5YR + 0.010,        # 6.05%
+
+    ("moderate", "short"):      SIGNATURE_BALANCED_5YR - 0.010,    # 7.22%
+    ("moderate", "medium"):     SIGNATURE_BALANCED_5YR,            # 8.22%
+    ("moderate", "long"):       SIGNATURE_BALANCED_5YR + 0.005,    # 8.72%
+
+    ("aggressive", "short"):    SIGNATURE_EQUITY_5YR - 0.020,      # 8.99%
+    ("aggressive", "medium"):   SIGNATURE_EQUITY_5YR - 0.010,      # 9.99%
+    ("aggressive", "long"):     SIGNATURE_EQUITY_5YR,              # 10.99%
 }
 
-# ── ICICI Pru Easy Retirement: 5-Year Historical Avg Returns ──
-# Source: iciciprulife.com/fund-performance (as on June 25, 2026)
-# No equity funds available for this pension product.
-# Debt: Easy Retirement Secure Fund → 4.66%
-# Balanced: Easy Retirement Balanced Fund → 6.05%
+PROTECT_N_GAIN_RETURN_MATRIX = {
+    ("conservative", "short"):  PROTECT_N_GAIN_DEBT_5YR,                # 5.45%
+    ("conservative", "medium"): PROTECT_N_GAIN_DEBT_5YR + 0.005,        # 5.95%
+    ("conservative", "long"):   PROTECT_N_GAIN_DEBT_5YR + 0.010,        # 6.45%
 
-RETIREMENT_BALANCED_5YR = 0.0605  # 6.05% — single balanced fund
-RETIREMENT_DEBT_5YR = 0.0466      # 4.66% — single debt fund
+    ("moderate", "short"):      PROTECT_N_GAIN_BALANCED_5YR - 0.010,    # 7.41%
+    ("moderate", "medium"):     PROTECT_N_GAIN_BALANCED_5YR,            # 8.41%
+    ("moderate", "long"):       PROTECT_N_GAIN_BALANCED_5YR + 0.005,    # 8.91%
 
-RETIREMENT_RETURN_MATRIX = {
-    ("conservative", "short"):  RETIREMENT_DEBT_5YR,                # 4.66%
-    ("conservative", "medium"): RETIREMENT_DEBT_5YR,                # 4.66%
-    ("conservative", "long"):   RETIREMENT_DEBT_5YR + 0.005,        # 5.16%
-
-    ("moderate", "short"):      0.0536,                             # 5.36% — blend
-    ("moderate", "medium"):     0.0536,                             # 5.36% — blend
-    ("moderate", "long"):       RETIREMENT_BALANCED_5YR,            # 6.05%
-
-    ("aggressive", "short"):    RETIREMENT_BALANCED_5YR - 0.005,    # 5.55%
-    ("aggressive", "medium"):   RETIREMENT_BALANCED_5YR,            # 6.05%
-    ("aggressive", "long"):     RETIREMENT_BALANCED_5YR,            # 6.05%
+    ("aggressive", "short"):    PROTECT_N_GAIN_EQUITY_5YR - 0.020,      # 8.98%
+    ("aggressive", "medium"):   PROTECT_N_GAIN_EQUITY_5YR - 0.010,      # 9.98%
+    ("aggressive", "long"):     PROTECT_N_GAIN_EQUITY_5YR,              # 10.98%
 }
 
-# ── Category-Specific Returns (Non-ULIP Products) ──────────
-# These products don't have market-linked funds.
-CATEGORY_RETURNS = {
-    "Term Insurance": 0.0,       # Pure protection, no investment
-    "Health Insurance": 0.0,     # Pure protection, no investment
-    "Guaranteed Income": 0.06,   # ~6% (ICICI Pru Gold participating return)
-    "Endowment": 0.065,          # ~6.5% (ICICI Pru Guaranteed Wealth Protector)
+WISH_RETURN_MATRIX = {
+    ("conservative", "short"):  WISH_DEBT_5YR,                # 5.96%
+    ("conservative", "medium"): WISH_DEBT_5YR + 0.005,        # 6.46%
+    ("conservative", "long"):   WISH_DEBT_5YR + 0.010,        # 6.96%
+
+    ("moderate", "short"):      WISH_BALANCED_5YR - 0.010,    # 7.37%
+    ("moderate", "medium"):     WISH_BALANCED_5YR,            # 8.37%
+    ("moderate", "long"):       WISH_BALANCED_5YR + 0.005,    # 8.87%
+
+    ("aggressive", "short"):    WISH_EQUITY_5YR - 0.020,      # 8.98%
+    ("aggressive", "medium"):   WISH_EQUITY_5YR - 0.010,      # 9.98%
+    ("aggressive", "long"):     WISH_EQUITY_5YR,              # 10.98%
 }
 
-# ── Product → Return Matrix Mapping ────────────────────────
-# Each ULIP-based product gets its own return matrix.
-# Non-ULIP products use flat rates from CATEGORY_RETURNS.
-PRODUCT_RETURN_MATRICES = {
-    "icici-pru-signature":       RETURN_MATRIX,
-    "icici-pru-easy-retirement": RETIREMENT_RETURN_MATRIX,
-    # Smart Kid data pending — falls back to RETURN_MATRIX
+# ── 7-Product Catalog ──────────────────────────────────────
+# Master registry: each product has an id, name, category, strategy,
+# and its return data (matrix for ULIPs, flat rate for others).
+
+PRODUCT_CATALOG = {
+    "icici-pru-signature-assure": {
+        "name": "ICICI Pru Signature Assure",
+        "category": "ULIP",
+        "strategy": STRATEGY_ULIP,
+        "return_matrix": SIGNATURE_RETURN_MATRIX,
+        "has_wealth_booster": True,
+    },
+    "icici-pru-iprotect-smart": {
+        "name": "ICICI Pru iProtect Smart Plus",
+        "category": "Term Insurance",
+        "strategy": STRATEGY_TERM,
+        "fixed_return": TERM_RETURN,
+        "has_wealth_booster": False,
+    },
+    "icici-pru-gift-pro": {
+        "name": "ICICI Pru GIFT Pro",
+        "category": "Guaranteed Income",
+        "strategy": STRATEGY_NON_PAR,
+        "fixed_return": NON_PAR_IRR,
+        "has_wealth_booster": False,
+    },
+    "icici-pru-protect-n-gain": {
+        "name": "ICICI Pru Protect N Gain",
+        "category": "ULIP",
+        "strategy": STRATEGY_ULIP,
+        "return_matrix": PROTECT_N_GAIN_RETURN_MATRIX,
+        "has_wealth_booster": False,
+    },
+    "icici-pru-wish": {
+        "name": "ICICI Pru Wish",
+        "category": "Protection",
+        "strategy": STRATEGY_TERM,
+        "has_wealth_booster": False,
+    },
+    "icici-pru-gpp-flexi": {
+        "name": "ICICI Pru Guaranteed Pension Plan Flexi",
+        "category": "Retirement (Annuity)",
+        "strategy": STRATEGY_ANNUITY,
+        "fixed_return": ANNUITY_YIELD,
+        "has_wealth_booster": False,
+    },
+    "icici-pru-smartkid-360": {
+        "name": "ICICI Pru SmartKid 360",
+        "category": "Child Plan (Traditional)",
+        "strategy": STRATEGY_NON_PAR,
+        "fixed_return": NON_PAR_IRR,
+        "has_wealth_booster": False,
+    },
 }
 
 # Wealth Booster: 3.25% of average fund value, every 5 years from year 10
-# Source: IPru Signature brochure — "Wealth Boosters at the end of every 5th
-#         policy year starting from the end of 10th policy year"
+# Source: IPru Signature Assure brochure
 WEALTH_BOOSTER_RATE = 0.0325
 WEALTH_BOOSTER_START_YEAR = 10
 WEALTH_BOOSTER_INTERVAL = 5
 
-# Goal → Product mapping from seed_products.json
-GOAL_PRODUCT_MAP = {
-    "retirement":         {"name": "ICICI Pru Easy Retirement",              "category": "Retirement",       "id": "icici-pru-easy-retirement"},
-    "retirement_planning":{"name": "ICICI Pru Easy Retirement",              "category": "Retirement",       "id": "icici-pru-easy-retirement"},
-    "child_education":    {"name": "ICICI Pru Smart Kid",                    "category": "Child Plan",       "id": "icici-pru-smart-kid"},
-    "home_purchase":      {"name": "ICICI Pru Guaranteed Wealth Protector",  "category": "Endowment",        "id": "icici-pru-guaranteed-wealth-protector"},
-    "family_protection":  {"name": "ICICI Pru iProtect Smart",              "category": "Term Insurance",   "id": "icici-pru-i-protect-smart"},
-    "protection":         {"name": "ICICI Pru iProtect Smart",              "category": "Term Insurance",   "id": "icici-pru-i-protect-smart"},
-    "wealth_creation":    {"name": "ICICI Pru Signature",                   "category": "ULIP",             "id": "icici-pru-signature"},
-    "child_marriage":     {"name": "ICICI Pru Smart Kid",                    "category": "Child Plan",       "id": "icici-pru-smart-kid"},
-    "legacy":             {"name": "ICICI Pru Gold",                        "category": "Guaranteed Income", "id": "icici-pru-gold"},
-    "health":             {"name": "ICICI Pru Heart / Cancer Protect",      "category": "Health Insurance", "id": "icici-pru-heart-cancer-protect"},
-    "travel":             {"name": "ICICI Pru Guaranteed Wealth Protector",  "category": "Endowment",        "id": "icici-pru-guaranteed-wealth-protector"},
-    "business_fund":      {"name": "ICICI Pru Signature",                   "category": "ULIP",             "id": "icici-pru-signature"},
-}
-
-# Goals eligible for ULIP wealth boosters
-ULIP_ELIGIBLE_GOALS = {"retirement", "retirement_planning", "wealth_creation", "child_education", "business_fund"}
+# Goals eligible for ULIP wealth boosters (only Signature Assure-mapped goals)
+ULIP_ELIGIBLE_GOALS = {"wealth_creation", "business_fund"}
 
 # Education abroad cost multiplier (source: industry standard 2-2.5x for US/UK vs India)
 ABROAD_EDUCATION_MULTIPLIER = 2.2
@@ -376,7 +429,7 @@ class SimulationEngine:
 
         return float(corpus)
 
-    # ── Product-Aware Return Rate ─────────────────────────
+    # ── Strategy-Routed Return Rate ─────────────────────────
 
     def _get_adjusted_return(
         self,
@@ -386,32 +439,32 @@ class SimulationEngine:
         return_override: Optional[float] = None,
     ) -> float:
         """
-        Get return rate based on the recommended product's category and
-        its product-specific 5-year historical fund data.
+        Get return rate using the product's calculation strategy.
 
-        - ULIP products: Use product-specific return matrix (risk × horizon)
-        - Non-ULIP products: Use flat category return from CATEGORY_RETURNS
+        Strategy routing:
+          - ULIP:    CAGR from product-specific return matrix (risk × horizon)
+          - NON_PAR: Fixed IRR (6.0%) — guaranteed, risk-independent
+          - ANNUITY: Fixed annuity yield (6.5%) — guaranteed pension
+          - TERM:    0.0% — pure protection, no investment
         """
         if return_override is not None:
             return return_override
 
-        # Lookup the recommended product for this goal type
+        # Lookup the recommended product from the 7-product catalog
         product = get_product_for_goal(goal_type)
-        category = product.get("category", "ULIP")
-        product_id = product.get("id", "icici-pru-signature")
+        strategy = product.get("strategy", STRATEGY_ULIP)
 
-        # Non-ULIP categories get flat returns (no market-linked funds)
-        if category in CATEGORY_RETURNS:
-            return CATEGORY_RETURNS[category]
+        # ── NON_PAR / ANNUITY / TERM: fixed rate, no market risk ──
+        if strategy in (STRATEGY_NON_PAR, STRATEGY_ANNUITY, STRATEGY_TERM):
+            return product.get("fixed_return", self.expected_return)
 
-        # ULIP-based products: use product-specific return matrix
+        # ── ULIP: risk-appetite × horizon matrix lookup ──
         bucket = _horizon_bucket(years)
         appetite = risk_appetite.lower() if risk_appetite else "moderate"
         if appetite not in ("conservative", "moderate", "aggressive"):
             appetite = "moderate"
 
-        # Get the product-specific matrix, fallback to Signature matrix
-        matrix = PRODUCT_RETURN_MATRICES.get(product_id, RETURN_MATRIX)
+        matrix = product.get("return_matrix", SIGNATURE_RETURN_MATRIX)
         return matrix.get((appetite, bucket), self.expected_return)
 
     # ── Single Goal Simulation ────────────────────────────
@@ -428,6 +481,7 @@ class SimulationEngine:
         return_override: Optional[float] = None,
         child_education_abroad: bool = False,
         retirement_age_override: Optional[int] = None,
+        enable_sip: bool = True,
     ) -> SimulationResult:
         """
         Run a financial simulation for a single goal with full what-if support.
@@ -449,8 +503,9 @@ class SimulationEngine:
         inflation = inflation_override if inflation_override is not None else self.inflation_rate
 
         # Get risk-aware blended return
+        actual_risk_appetite = getattr(goal, 'risk_override', None) or risk_appetite
         adjusted_return = self._get_adjusted_return(
-            goal.goal_type, years_remaining, risk_appetite, return_override
+            goal.goal_type, years_remaining, actual_risk_appetite, return_override
         )
 
         # Inflation-adjusted future value of the goal
@@ -468,7 +523,7 @@ class SimulationEngine:
         lump_sum_fv = self.future_value(existing_savings, adjusted_return, years_remaining) if existing_savings > 0 else 0.0
 
         # 2. Current monthly SIP (flat or stepped)
-        monthly_savings = current_savings or goal.monthly_contribution or 0.0
+        monthly_savings = (current_savings or goal.monthly_contribution or 0.0) if enable_sip else 0.0
         if annual_increment > 0 and monthly_savings > 0:
             sip_fv = self.stepped_sip_future_value(
                 monthly_savings, adjusted_return, annual_increment, years_remaining
@@ -493,9 +548,10 @@ class SimulationEngine:
         coverage_ratio = min(1.0, projected_corpus / future_target if future_target > 0 else 0.0)
 
         # Monthly SIP required to close the gap (not the entire target)
-        monthly_required = self.monthly_sip_required(
-            gap, adjusted_return, years_remaining
-        ) if gap > 0 else 0.0
+        if enable_sip and gap > 0:
+            monthly_required = self.monthly_sip_required(gap, adjusted_return, years_remaining)
+        else:
+            monthly_required = 0.0
 
         result = SimulationResult(
             goal_type=goal.goal_type,
@@ -531,6 +587,7 @@ class SimulationEngine:
         return_override: Optional[float] = None,
         child_education_abroad: bool = False,
         retirement_age_override: Optional[int] = None,
+        enable_sip: bool = True,
     ) -> MultiGoalSimulationResult:
         """
         Run simulations for ALL goals with full what-if support.
@@ -547,24 +604,31 @@ class SimulationEngine:
                        f"(risk={risk}, inflation={inflation_override or self.inflation_rate:.1%}, "
                        f"savings={existing_savings:,.0f}, increment={annual_increment:.1%})[/bold cyan]")
 
-        # Distribute existing savings proportionally across goals by priority
-        num_goals = len(profile.goals)
-        savings_per_goal = existing_savings / num_goals if num_goals > 0 else 0.0
+        # Allocate dedicated existing savings if specified, otherwise distribute remainder equally
+        allocated_savings = sum((g.existing_savings or 0.0) for g in profile.goals)
+        unallocated_savings = max(0.0, existing_savings - allocated_savings)
+        
+        goals_without_explicit_savings = [g for g in profile.goals if getattr(g, 'existing_savings', None) is None]
+        num_unallocated = len(goals_without_explicit_savings)
+        unallocated_per_goal = unallocated_savings / num_unallocated if num_unallocated > 0 else 0.0
 
         goal_results = []
         for goal in profile.goals:
             monthly_savings = goal.monthly_contribution or 0.0
+            goal_savings = goal.existing_savings if getattr(goal, 'existing_savings', None) is not None else unallocated_per_goal
+
             result = self.simulate_goal(
                 goal,
                 profile.age,
                 current_savings=monthly_savings,
-                existing_savings=savings_per_goal,
+                existing_savings=goal_savings,
                 annual_increment=annual_increment,
-                risk_appetite=risk,
+                risk_appetite=getattr(goal, 'risk_override', None) or risk,
                 inflation_override=inflation_override,
                 return_override=return_override,
                 child_education_abroad=child_education_abroad,
                 retirement_age_override=retirement_age_override,
+                enable_sip=enable_sip,
             )
             goal_results.append(result)
 
@@ -595,8 +659,9 @@ class SimulationEngine:
                     
                     adjusted_return = res.expected_return
                     
+                    goal_savings = goal.existing_savings if getattr(goal, 'existing_savings', None) is not None else unallocated_per_goal
                     # 1. Lump sum (existing savings)
-                    lump_fv = self.future_value(savings_per_goal, adjusted_return, year)
+                    lump_fv = self.future_value(goal_savings, adjusted_return, year)
                     
                     # 2. SIP (Current + Required to close the gap)
                     monthly_savings = (goal.monthly_contribution or 0.0) + res.monthly_savings_required
@@ -614,7 +679,7 @@ class SimulationEngine:
                     else:
                         invested_sip = sum(monthly_savings * 12 * np.power(1 + annual_increment, yr) for yr in range(year))
                     
-                    total_invested += savings_per_goal + invested_sip
+                    total_invested += goal_savings + invested_sip
                     projected_corpus += lump_fv + sip_fv + booster_fv
                 
                 yearly_projections.append(YearlyProjection(
@@ -676,7 +741,7 @@ class SimulationEngine:
     ) -> dict:
         """
         Simulate a specific product directly (forward projection).
-        Matches product based on user demographics (age, risk).
+        Uses the 7-product catalog and strategy-routed return rates.
         """
         # Demographic matching logic to select best product
         goal_type = "wealth_creation"
@@ -684,47 +749,56 @@ class SimulationEngine:
             goal_type = "protection" if user_age > 40 else "home_purchase"
         elif user_age >= 50:
             goal_type = "retirement"
-            
+
         matched_product = get_product_for_goal(goal_type)
         product_name = matched_product["name"]
-        product_category = matched_product["category"].lower()
-        
-        # Determine return rate based on risk
-        return_rate = self.RETURN_MATRIX.get(risk_appetite, self.RETURN_MATRIX["moderate"])["long"]
-        
+        strategy = matched_product.get("strategy", STRATEGY_ULIP)
+
+        # Get return rate using strategy routing
+        return_rate = self._get_adjusted_return(
+            goal_type, tenure_years, risk_appetite
+        )
+
+        # Check if this product gets wealth boosters
+        has_booster = matched_product.get("has_wealth_booster", False)
+
         yearly_projections = []
         total_invested = 0.0
         projected_corpus = 0.0
-        
-        annual_increment = 0.0 # Standard product simulation without stepped SIP by default
-        
+
+        annual_increment = 0.0  # Standard product simulation without stepped SIP
+
         from ai_services.models import YearlyProjection
         for year in range(1, tenure_years + 1):
             # 1. Invested
             invested_this_year = monthly_premium * 12
             total_invested += invested_this_year
-            
+
             # 2. SIP FV for this year
-            # Stepped SIP FV calculates the FV of all stepped SIPs up to 'year'.
-            sip_fv = self.stepped_sip_future_value(monthly_premium, return_rate, annual_increment, year)
-            
-            # 3. Product specific boosters
+            sip_fv = self.stepped_sip_future_value(
+                monthly_premium, return_rate, annual_increment, year
+            )
+
+            # 3. Product specific boosters (only Signature Assure)
             booster_fv = 0.0
-            if "ulip" in product_category and year >= WEALTH_BOOSTER_START_YEAR:
-                booster_fv = self.wealth_booster_value(monthly_premium * 12, return_rate, year)
-                
+            if has_booster and year >= WEALTH_BOOSTER_START_YEAR:
+                booster_fv = self.wealth_booster_value(
+                    monthly_premium * 12, return_rate, year
+                )
+
             projected_corpus = sip_fv + booster_fv
-            
+
             yearly_projections.append(YearlyProjection(
                 year=year,
                 age=user_age + year,
                 total_invested=round(total_invested, 2),
                 projected_corpus=round(projected_corpus, 2)
             ))
-            
+
         return {
             "product_name": product_name,
             "product_category": matched_product["category"],
+            "product_strategy": strategy,
             "monthly_premium": monthly_premium,
             "tenure_years": tenure_years,
             "total_invested": round(total_invested, 2),
@@ -736,14 +810,81 @@ class SimulationEngine:
 
 
 # ── Utility: Get product recommendation for a goal ────────
+GOAL_PRODUCT_MAP_EXACT = {
+    "wealth_creation":    "icici-pru-signature-assure",
+    "business_fund":      "icici-pru-signature-assure",
+    "retirement":         "icici-pru-gpp-flexi",
+    "child_education":    "icici-pru-smartkid-360",
+    "child_marriage":     "icici-pru-smartkid-360",
+    "home_purchase":      "icici-pru-protect-n-gain",
+    "family_protection":  "icici-pru-iprotect-smart",
+    "legacy":             "icici-pru-gift-pro",
+    "health":             "icici-pru-wish",
+    "travel":             "icici-pru-protect-n-gain",
+}
+
+_VS_NAME_TO_KEY = {
+    "ICICI Pru Signature Assure": "icici-pru-signature-assure",
+    "ICICI Pru Signature": "icici-pru-signature-assure",
+    "ICICI Pru Protect N Gain": "icici-pru-protect-n-gain",
+    "ICICI Pru iProtect Smart Plus": "icici-pru-iprotect-smart",
+    "ICICI Pru SmartKid 360": "icici-pru-smartkid-360",
+    "ICICI Pru Guaranteed Pension Plan Flexi": "icici-pru-gpp-flexi",
+    "ICICI Pru GIFT Pro": "icici-pru-gift-pro",
+    "ICICI Pru Wish": "icici-pru-wish",
+}
+
+@lru_cache(maxsize=32)
+def _get_product_id_for_goal_semantic(goal_type: str) -> str:
+    """Uses vectorstore to find the most semantically relevant product ID."""
+    try:
+        vs = get_vectorstore()
+        matches = vs.search_products(goal_type, n_results=1)
+        if matches:
+            return _VS_NAME_TO_KEY.get(matches[0].product_name, "icici-pru-signature-assure")
+    except Exception as e:
+        console.print(f"[red]Semantic search failed for goal '{goal_type}': {e}[/red]")
+    
+    return "icici-pru-signature-assure"
+
 def get_product_for_goal(goal_type: str) -> dict:
-    """Return the recommended ICICI product for a given goal type."""
+    """
+    Return the recommended ICICI product dict from the 7-product catalog
+    using a 3-layer fallback system:
+    1. Exact Match Dictionary
+    2. Regex Keyword Matching
+    3. Semantic Similarity Search (Vectorstore)
+    """
     key = goal_type.lower().replace(" ", "_").strip()
-    return GOAL_PRODUCT_MAP.get(key, {
-        "name": "ICICI Pru Signature",
-        "category": "ULIP",
-        "id": "icici-pru-signature",
-    })
+    
+    # Layer 1: Exact Match
+    if key in GOAL_PRODUCT_MAP_EXACT:
+        product_id = GOAL_PRODUCT_MAP_EXACT[key]
+    else:
+        # Layer 2: Regex / Keyword Match
+        search_key = key.replace("_", " ")
+        if re.search(r'protect|term|life cover', search_key):
+            product_id = "icici-pru-iprotect-smart"
+        elif re.search(r'medical|health|hospital|illness', search_key):
+            product_id = "icici-pru-wish"
+        elif re.search(r'retire|pension|old age', search_key):
+            product_id = "icici-pru-gpp-flexi"
+        elif re.search(r'child|kid|education|marriage', search_key):
+            product_id = "icici-pru-smartkid-360"
+        elif re.search(r'home|house|property', search_key):
+            product_id = "icici-pru-protect-n-gain"
+        elif re.search(r'wealth|invest|growth|business', search_key):
+            product_id = "icici-pru-signature-assure"
+        elif re.search(r'legacy|estate|income', search_key):
+            product_id = "icici-pru-gift-pro"
+        else:
+            # Layer 3: Semantic Vector Search
+            product_id = _get_product_id_for_goal_semantic(goal_type)
+            
+    product = PRODUCT_CATALOG.get(product_id, PRODUCT_CATALOG["icici-pru-signature-assure"])
+    
+    # Inject the product ID into the returned dict for downstream use
+    return {"id": product_id, **product}
 
 
 # ── CLI Entry Point ───────────────────────────────────────

@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight, ArrowLeft, CheckCircle2, User, MapPin, IndianRupee, Heart, Target, TrendingUp } from 'lucide-react'
+import { ArrowRight, ArrowLeft, CheckCircle2, User, MapPin, IndianRupee, Heart, Target, TrendingUp, Loader2 } from 'lucide-react'
 import { useAppStore } from '../../store'
 import type { UserProfile } from '../../types'
+import type { UpdateProfileRequest } from '../../types/api'
+import { api, ApiError } from '../../lib/apiClient'
 import { cn } from '../../lib/utils'
 
 const STEPS = [
@@ -25,12 +27,18 @@ const RISK_OPTIONS: { value: UserProfile['riskAppetite']; label: string; desc: s
 ]
 
 export default function OnboardingFlow() {
-  const { setProfile, setActiveTab } = useAppStore()
+  const { setProfile, setActiveTab, user, profile } = useAppStore()
   const [step, setStep] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [form, setForm] = useState({
-    name: '', age: 30, city: '', income: 100000,
-    familySize: 2, goals: [] as string[],
-    riskAppetite: 'moderate' as UserProfile['riskAppetite'],
+    name: profile?.name || '', 
+    age: profile?.age, 
+    city: profile?.city || '', 
+    income: profile?.income || 0,
+    familySize: profile?.familySize || 0, 
+    goals: profile?.goals || [] as string[],
+    riskAppetite: profile?.riskAppetite as UserProfile['riskAppetite'],
   })
 
   function update(field: string, value: unknown) {
@@ -47,7 +55,35 @@ export default function OnboardingFlow() {
   function next() { if (step < STEPS.length - 1) setStep(s => s + 1) }
   function back() { if (step > 0) setStep(s => s - 1) }
 
-  function finish() {
+  async function finish() {
+    setError('')
+    setLoading(true)
+    try {
+      // Map frontend form → backend UpdateProfileRequest
+      const payload: UpdateProfileRequest = {
+        full_name: form.name || user?.name || null,
+        age: form.age,
+        annual_income: (form.income || 0) * 12, // frontend is monthly, backend is annual
+        dependents: form.familySize,
+        risk_appetite: form.riskAppetite,
+        city: form.city || null,
+      }
+      await api.put('/users/me', payload)
+
+      const { createGoal } = useAppStore.getState()
+      for (const g of form.goals) {
+        await createGoal({
+          goal_type: g,
+          target_amount: 1000000, // Default baseline for onboarding
+          target_year: (form.age || 30) + 10,
+        }).catch(e => console.warn('Failed to save goal:', e))
+      }
+    } catch (err: unknown) {
+      // Non-blocking — save profile locally even if API fails
+      console.warn('Profile save to backend failed:', err instanceof ApiError ? err.detail : err)
+    } finally {
+      setLoading(false)
+    }
     setProfile(form)
     setActiveTab('chat')
   }
@@ -62,8 +98,8 @@ export default function OnboardingFlow() {
       <div>
         <label className="text-xs font-medium text-gray-600 mb-1 block">Your age</label>
         <div className="flex items-center gap-3">
-          <input type="range" min={18} max={65} value={form.age} onChange={e => update('age', +e.target.value)} className="flex-1 accent-brand-orange" />
-          <span className="text-brand-navy font-bold w-10 text-center">{form.age}</span>
+          <input type="range" min={18} max={65} value={form.age || 18} onChange={e => update('age', +e.target.value)} className="flex-1 accent-brand-orange" />
+          <span className="text-brand-navy font-bold w-10 text-center">{form.age || '?'}</span>
         </div>
       </div>
       <div>
@@ -77,8 +113,8 @@ export default function OnboardingFlow() {
       <div>
         <label className="text-xs font-medium text-gray-600 mb-1 block">Monthly household income</label>
         <div className="flex items-center gap-3">
-          <input type="range" min={20000} max={1000000} step={10000} value={form.income} onChange={e => update('income', +e.target.value)} className="flex-1 accent-brand-orange" />
-          <span className="text-brand-navy font-bold text-sm w-16 text-right">₹{(form.income / 1000).toFixed(0)}K</span>
+          <input type="range" min={20000} max={1000000} step={10000} value={form.income || 20000} onChange={e => update('income', +e.target.value)} className="flex-1 accent-brand-orange" />
+          <span className="text-brand-navy font-bold text-sm w-16 text-right">₹{((form.income || 0) / 1000).toFixed(0)}K</span>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -227,8 +263,9 @@ export default function OnboardingFlow() {
             Continue <ArrowRight size={15} />
           </button>
         ) : (
-          <button onClick={finish} className="btn-primary flex-1 justify-center">
-            Build my plan <ArrowRight size={15} />
+          <button onClick={finish} disabled={loading} className="btn-primary flex-1 justify-center">
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+            {loading ? 'Saving...' : 'Build my plan'}
           </button>
         )}
       </div>

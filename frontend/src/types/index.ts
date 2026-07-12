@@ -5,6 +5,7 @@ export interface Product {
   name: string
   category: ProductCategory
   tagline: string
+  description: string
   minPremium: number
   coverageUpTo: number
   keyBenefits: string[]
@@ -24,13 +25,18 @@ export interface LifeGoal {
 }
 
 export interface UserProfile {
-  name: string
-  age: number
-  city: string
-  income: number
-  riskAppetite: 'conservative' | 'moderate' | 'aggressive'
-  familySize: number
+  name?: string
+  age?: number
+  city?: string
+  income?: number
+  monthlyExpenses?: number
+  existingCoverage?: number
+  riskAppetite?: 'conservative' | 'moderate' | 'aggressive'
+  familySize?: number
+  maritalStatus?: string
+  occupation?: string
   goals: string[]
+  editableGoals?: any[]
 }
 
 export interface SimulationResult {
@@ -40,6 +46,16 @@ export interface SimulationResult {
   gap: number
   recommendedProducts: string[]
   monthlyPremium: number
+  recommendedProductName?: string
+  recommendedProductCategory?: string
+  recommendedProductId?: string
+}
+
+export interface YearlyProjection {
+  year: number
+  age: number
+  totalInvested: number
+  projectedCorpus: number
 }
 
 export interface Message {
@@ -56,4 +72,9 @@ export interface WhatIfParams {
   inflationRate: number
   existingSavings: number
   annualIncrementPercent: number
+  goalTargetAges?: Record<string, number>
+  goalTargetAmounts?: Record<string, number>
+  goalExistingSavings?: Record<string, number>
+  enableSip: boolean
+  goalRiskAppetites?: Record<string, 'conservative' | 'moderate' | 'aggressive'>
 }
