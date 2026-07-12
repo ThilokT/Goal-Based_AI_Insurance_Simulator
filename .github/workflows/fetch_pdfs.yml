@@ -26,7 +26,7 @@ jobs:
 
       - name: Run Fetch Script
         env:
-          GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
+          GITHUB_PAT: ${{ secrets.MY_GITHUB_PAT }}
           # Override save dir to a relative path for the CI environment
           SAVE_DIR: ./backend/data/brochures
         run: |
