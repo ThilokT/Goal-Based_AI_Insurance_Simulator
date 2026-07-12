@@ -50,8 +50,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # Force add all generated data files (and record deletions with --all)
-          git add --all backend/data/brochures/ || true
+          # Force add all generated data files so they bypass gitignore
+          git add -f backend/data/brochures/*.pdf || true
           git add -f backend/data/extracted_products.json || true
           git add -f backend/data/chroma_db/ || true
           
