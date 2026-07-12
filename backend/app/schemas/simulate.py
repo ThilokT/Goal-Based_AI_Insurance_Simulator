@@ -10,6 +10,8 @@ class GoalInput(BaseModel):
     target_year: int
     priority: int = Field(default=1, ge=1, le=5)
     monthly_contribution: Optional[float] = None
+    existing_savings: Optional[float] = None
+    risk_override: Optional[str] = None
 
 
 class SimulateRequest(BaseModel):
@@ -20,6 +22,7 @@ class SimulateRequest(BaseModel):
     risk_appetite: Optional[str] = "moderate"
     goals: list[GoalInput] = Field(..., min_length=1)
     # ── What-If Parameters ──────────────────────────────
+    enable_sip: Optional[bool] = Field(True, description="Enable SIP calculation")
     inflation_rate: Optional[float] = Field(None, ge=0.01, le=0.20, description="Override inflation rate (e.g. 0.06 for 6%)")
     existing_savings: Optional[float] = Field(0.0, ge=0, description="Lump sum already saved (INR)")
     annual_increment_percent: Optional[float] = Field(0.0, ge=0, le=0.50, description="Annual salary/SIP step-up rate (e.g. 0.08 for 8%)")

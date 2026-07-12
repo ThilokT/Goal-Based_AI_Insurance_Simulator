@@ -57,6 +57,8 @@ def run_simulation(request_data: dict) -> dict:
             target_year=g["target_year"],
             priority=g.get("priority", 1),
             monthly_contribution=g.get("monthly_contribution"),
+            existing_savings=g.get("existing_savings"),
+            risk_override=g.get("risk_override"),
         )
         for g in request_data["goals"]
     ]
@@ -77,6 +79,7 @@ def run_simulation(request_data: dict) -> dict:
     retirement_age = request_data.get("retirement_age", 60)
     child_education_abroad = request_data.get("child_education_abroad", False)
     return_override = request_data.get("expected_return_override")
+    enable_sip = request_data.get("enable_sip", True)
 
     # Run simulation with what-if params
     result = engine.simulate_all_goals(
@@ -87,6 +90,7 @@ def run_simulation(request_data: dict) -> dict:
         return_override=return_override,
         child_education_abroad=child_education_abroad,
         retirement_age_override=retirement_age,
+        enable_sip=enable_sip,
     )
 
     # Validate with guardrails

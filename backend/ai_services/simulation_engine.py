@@ -13,11 +13,15 @@ Usage:
     engine = SimulationEngine()
     result = engine.simulate_goal(goal, user_age=30)
 """
+import re
 import numpy as np
 from datetime import datetime
 from typing import Optional
+from functools import lru_cache
 
 from rich.console import Console
+
+from ai_services.vectorstore import get_vectorstore
 
 from ai_services.config import (
     DEFAULT_INFLATION_RATE,
@@ -175,9 +179,8 @@ PRODUCT_CATALOG = {
     },
     "icici-pru-wish": {
         "name": "ICICI Pru Wish",
-        "category": "Health (ULIP)",
-        "strategy": STRATEGY_ULIP,
-        "return_matrix": WISH_RETURN_MATRIX,
+        "category": "Protection",
+        "strategy": STRATEGY_TERM,
         "has_wealth_booster": False,
     },
     "icici-pru-gpp-flexi": {
@@ -189,7 +192,7 @@ PRODUCT_CATALOG = {
     },
     "icici-pru-smartkid-360": {
         "name": "ICICI Pru SmartKid 360",
-        "category": "Child Plan (Guaranteed)",
+        "category": "Child Plan (Traditional)",
         "strategy": STRATEGY_NON_PAR,
         "fixed_return": NON_PAR_IRR,
         "has_wealth_booster": False,
@@ -201,38 +204,6 @@ PRODUCT_CATALOG = {
 WEALTH_BOOSTER_RATE = 0.0325
 WEALTH_BOOSTER_START_YEAR = 10
 WEALTH_BOOSTER_INTERVAL = 5
-
-# ── Goal → Product Mapping ─────────────────────────────────
-# Maps user goal types to the recommended ICICI product from the catalog.
-GOAL_PRODUCT_MAP = {
-    # Wealth creation goals → Signature Assure (ULIP, broadest fund selection)
-    "wealth_creation":    "icici-pru-signature-assure",
-    "business_fund":      "icici-pru-signature-assure",
-
-    # Retirement goals → GPP Flexi (Annuity, guaranteed pension)
-    "retirement":         "icici-pru-gpp-flexi",
-    "retirement_planning":"icici-pru-gpp-flexi",
-
-    # Child goals → SmartKid 360 (Non-Par, milestone payouts + premium waiver)
-    "child_education":    "icici-pru-smartkid-360",
-    "child_marriage":     "icici-pru-smartkid-360",
-
-    # Home purchase → Protect N Gain (ULIP, protection + growth)
-    "home_purchase":      "icici-pru-protect-n-gain",
-
-    # Family protection → iProtect Smart Plus (Term, highest cover at lowest cost)
-    "family_protection":  "icici-pru-iprotect-smart",
-    "protection":         "icici-pru-iprotect-smart",
-
-    # Legacy / guaranteed income → GIFT Pro (Non-Par, guaranteed income stream)
-    "legacy":             "icici-pru-gift-pro",
-
-    # Health protection → Wish (ULIP via Health Saver funds)
-    "health":             "icici-pru-wish",
-
-    # Travel / general savings → Protect N Gain (balanced growth + protection)
-    "travel":             "icici-pru-protect-n-gain",
-}
 
 # Goals eligible for ULIP wealth boosters (only Signature Assure-mapped goals)
 ULIP_ELIGIBLE_GOALS = {"wealth_creation", "business_fund"}
@@ -510,6 +481,7 @@ class SimulationEngine:
         return_override: Optional[float] = None,
         child_education_abroad: bool = False,
         retirement_age_override: Optional[int] = None,
+        enable_sip: bool = True,
     ) -> SimulationResult:
         """
         Run a financial simulation for a single goal with full what-if support.
@@ -531,8 +503,9 @@ class SimulationEngine:
         inflation = inflation_override if inflation_override is not None else self.inflation_rate
 
         # Get risk-aware blended return
+        actual_risk_appetite = getattr(goal, 'risk_override', None) or risk_appetite
         adjusted_return = self._get_adjusted_return(
-            goal.goal_type, years_remaining, risk_appetite, return_override
+            goal.goal_type, years_remaining, actual_risk_appetite, return_override
         )
 
         # Inflation-adjusted future value of the goal
@@ -550,7 +523,7 @@ class SimulationEngine:
         lump_sum_fv = self.future_value(existing_savings, adjusted_return, years_remaining) if existing_savings > 0 else 0.0
 
         # 2. Current monthly SIP (flat or stepped)
-        monthly_savings = current_savings or goal.monthly_contribution or 0.0
+        monthly_savings = (current_savings or goal.monthly_contribution or 0.0) if enable_sip else 0.0
         if annual_increment > 0 and monthly_savings > 0:
             sip_fv = self.stepped_sip_future_value(
                 monthly_savings, adjusted_return, annual_increment, years_remaining
@@ -575,9 +548,10 @@ class SimulationEngine:
         coverage_ratio = min(1.0, projected_corpus / future_target if future_target > 0 else 0.0)
 
         # Monthly SIP required to close the gap (not the entire target)
-        monthly_required = self.monthly_sip_required(
-            gap, adjusted_return, years_remaining
-        ) if gap > 0 else 0.0
+        if enable_sip and gap > 0:
+            monthly_required = self.monthly_sip_required(gap, adjusted_return, years_remaining)
+        else:
+            monthly_required = 0.0
 
         result = SimulationResult(
             goal_type=goal.goal_type,
@@ -613,6 +587,7 @@ class SimulationEngine:
         return_override: Optional[float] = None,
         child_education_abroad: bool = False,
         retirement_age_override: Optional[int] = None,
+        enable_sip: bool = True,
     ) -> MultiGoalSimulationResult:
         """
         Run simulations for ALL goals with full what-if support.
@@ -629,24 +604,31 @@ class SimulationEngine:
                        f"(risk={risk}, inflation={inflation_override or self.inflation_rate:.1%}, "
                        f"savings={existing_savings:,.0f}, increment={annual_increment:.1%})[/bold cyan]")
 
-        # Distribute existing savings proportionally across goals by priority
-        num_goals = len(profile.goals)
-        savings_per_goal = existing_savings / num_goals if num_goals > 0 else 0.0
+        # Allocate dedicated existing savings if specified, otherwise distribute remainder equally
+        allocated_savings = sum((g.existing_savings or 0.0) for g in profile.goals)
+        unallocated_savings = max(0.0, existing_savings - allocated_savings)
+        
+        goals_without_explicit_savings = [g for g in profile.goals if getattr(g, 'existing_savings', None) is None]
+        num_unallocated = len(goals_without_explicit_savings)
+        unallocated_per_goal = unallocated_savings / num_unallocated if num_unallocated > 0 else 0.0
 
         goal_results = []
         for goal in profile.goals:
             monthly_savings = goal.monthly_contribution or 0.0
+            goal_savings = goal.existing_savings if getattr(goal, 'existing_savings', None) is not None else unallocated_per_goal
+
             result = self.simulate_goal(
                 goal,
                 profile.age,
                 current_savings=monthly_savings,
-                existing_savings=savings_per_goal,
+                existing_savings=goal_savings,
                 annual_increment=annual_increment,
-                risk_appetite=risk,
+                risk_appetite=getattr(goal, 'risk_override', None) or risk,
                 inflation_override=inflation_override,
                 return_override=return_override,
                 child_education_abroad=child_education_abroad,
                 retirement_age_override=retirement_age_override,
+                enable_sip=enable_sip,
             )
             goal_results.append(result)
 
@@ -677,8 +659,9 @@ class SimulationEngine:
                     
                     adjusted_return = res.expected_return
                     
+                    goal_savings = goal.existing_savings if getattr(goal, 'existing_savings', None) is not None else unallocated_per_goal
                     # 1. Lump sum (existing savings)
-                    lump_fv = self.future_value(savings_per_goal, adjusted_return, year)
+                    lump_fv = self.future_value(goal_savings, adjusted_return, year)
                     
                     # 2. SIP (Current + Required to close the gap)
                     monthly_savings = (goal.monthly_contribution or 0.0) + res.monthly_savings_required
@@ -696,7 +679,7 @@ class SimulationEngine:
                     else:
                         invested_sip = sum(monthly_savings * 12 * np.power(1 + annual_increment, yr) for yr in range(year))
                     
-                    total_invested += savings_per_goal + invested_sip
+                    total_invested += goal_savings + invested_sip
                     projected_corpus += lump_fv + sip_fv + booster_fv
                 
                 yearly_projections.append(YearlyProjection(
@@ -827,17 +810,79 @@ class SimulationEngine:
 
 
 # ── Utility: Get product recommendation for a goal ────────
+GOAL_PRODUCT_MAP_EXACT = {
+    "wealth_creation":    "icici-pru-signature-assure",
+    "business_fund":      "icici-pru-signature-assure",
+    "retirement":         "icici-pru-gpp-flexi",
+    "child_education":    "icici-pru-smartkid-360",
+    "child_marriage":     "icici-pru-smartkid-360",
+    "home_purchase":      "icici-pru-protect-n-gain",
+    "family_protection":  "icici-pru-iprotect-smart",
+    "legacy":             "icici-pru-gift-pro",
+    "health":             "icici-pru-wish",
+    "travel":             "icici-pru-protect-n-gain",
+}
+
+_VS_NAME_TO_KEY = {
+    "ICICI Pru Signature Assure": "icici-pru-signature-assure",
+    "ICICI Pru Signature": "icici-pru-signature-assure",
+    "ICICI Pru Protect N Gain": "icici-pru-protect-n-gain",
+    "ICICI Pru iProtect Smart Plus": "icici-pru-iprotect-smart",
+    "ICICI Pru SmartKid 360": "icici-pru-smartkid-360",
+    "ICICI Pru Guaranteed Pension Plan Flexi": "icici-pru-gpp-flexi",
+    "ICICI Pru GIFT Pro": "icici-pru-gift-pro",
+    "ICICI Pru Wish": "icici-pru-wish",
+}
+
+@lru_cache(maxsize=32)
+def _get_product_id_for_goal_semantic(goal_type: str) -> str:
+    """Uses vectorstore to find the most semantically relevant product ID."""
+    try:
+        vs = get_vectorstore()
+        matches = vs.search_products(goal_type, n_results=1)
+        if matches:
+            return _VS_NAME_TO_KEY.get(matches[0].product_name, "icici-pru-signature-assure")
+    except Exception as e:
+        console.print(f"[red]Semantic search failed for goal '{goal_type}': {e}[/red]")
+    
+    return "icici-pru-signature-assure"
+
 def get_product_for_goal(goal_type: str) -> dict:
     """
-    Return the recommended ICICI product dict from the 7-product catalog.
-
-    Returns the full product entry including name, category, strategy,
-    return_matrix (for ULIPs) or fixed_return (for Non-Par/Annuity/Term),
-    and has_wealth_booster flag.
+    Return the recommended ICICI product dict from the 7-product catalog
+    using a 3-layer fallback system:
+    1. Exact Match Dictionary
+    2. Regex Keyword Matching
+    3. Semantic Similarity Search (Vectorstore)
     """
     key = goal_type.lower().replace(" ", "_").strip()
-    product_id = GOAL_PRODUCT_MAP.get(key, "icici-pru-signature-assure")
+    
+    # Layer 1: Exact Match
+    if key in GOAL_PRODUCT_MAP_EXACT:
+        product_id = GOAL_PRODUCT_MAP_EXACT[key]
+    else:
+        # Layer 2: Regex / Keyword Match
+        search_key = key.replace("_", " ")
+        if re.search(r'protect|term|life cover', search_key):
+            product_id = "icici-pru-iprotect-smart"
+        elif re.search(r'medical|health|hospital|illness', search_key):
+            product_id = "icici-pru-wish"
+        elif re.search(r'retire|pension|old age', search_key):
+            product_id = "icici-pru-gpp-flexi"
+        elif re.search(r'child|kid|education|marriage', search_key):
+            product_id = "icici-pru-smartkid-360"
+        elif re.search(r'home|house|property', search_key):
+            product_id = "icici-pru-protect-n-gain"
+        elif re.search(r'wealth|invest|growth|business', search_key):
+            product_id = "icici-pru-signature-assure"
+        elif re.search(r'legacy|estate|income', search_key):
+            product_id = "icici-pru-gift-pro"
+        else:
+            # Layer 3: Semantic Vector Search
+            product_id = _get_product_id_for_goal_semantic(goal_type)
+            
     product = PRODUCT_CATALOG.get(product_id, PRODUCT_CATALOG["icici-pru-signature-assure"])
+    
     # Inject the product ID into the returned dict for downstream use
     return {"id": product_id, **product}
 

@@ -1,5 +1,5 @@
 """
-LifeMap Backend — FastAPI Application Factory.
+LifeMap Backend — FastAPI Application Factory. (Reload triggered)
 
 This is the main entry point for the backend application.
 Run with: uvicorn app.main:app --reload
@@ -44,6 +44,10 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     # Startup
     logger.info("LifeMap Backend starting up...")
+    
+    from app.services.cache_decorator import clear_cache
+    clear_cache("products")
+    logger.info("Products cache cleared on startup.")
 
     # Start APScheduler
     from app.scheduler.jobs import setup_scheduler

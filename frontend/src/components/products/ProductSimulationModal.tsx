@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, TrendingUp, Shield, IndianRupee, Landmark } from 'lucide-react'
 import type { Product, UserProfile } from '../../types'
@@ -12,27 +12,101 @@ interface ProductSimulationModalProps {
 }
 
 export default function ProductSimulationModal({ product, profile, isOpen, onClose }: ProductSimulationModalProps) {
+  const [params, setParams] = useState({
+    age: 30,
+    annualPremium: 50000,
+    ppt: 10,
+    tenure: 15,
+  })
+
+  useEffect(() => {
+    if (!product || !profile || !isOpen) return
+
+    let defaultAge = profile.age || 30
+    let defaultTenure = 15
+    if (product.tenure.includes('age 99')) {
+      defaultTenure = 99 - defaultAge
+    } else {
+      const match = product.tenure.match(/\d+/)
+      if (match) defaultTenure = parseInt(match[0], 10)
+    }
+    let defaultPremium = product.minPremium || 50000
+    let defaultPpt = defaultTenure
+
+    if (product.id.includes('signature-assure')) {
+      defaultPpt = 10
+      defaultTenure = 20
+      defaultPremium = 144000
+    } else if (product.id.includes('gift-pro')) {
+      defaultPpt = 12
+      defaultTenure = 15
+      defaultPremium = 1500000
+    } else if (product.id.includes('protect-n-gain')) {
+      defaultPpt = 12
+      defaultTenure = 30
+      defaultPremium = 86148
+    } else if (product.id.includes('smartkid-360')) {
+      defaultPpt = 12
+      defaultTenure = 25
+      defaultPremium = 500000
+    } else if (product.id.includes('gpp-flexi') || product.category === 'annuity') {
+      defaultPpt = 7
+      defaultTenure = 45
+      defaultPremium = 300000
+    } else if (product.id.includes('iprotect') || product.category === 'protection') {
+      defaultPpt = 24
+      defaultTenure = 24
+      defaultPremium = 6000
+    } else if (product.id.includes('wish')) {
+      defaultPpt = 10
+      defaultTenure = 15
+      defaultPremium = 10380
+    }
+
+    setParams({
+      age: defaultAge,
+      annualPremium: defaultPremium,
+      ppt: defaultPpt,
+      tenure: defaultTenure
+    })
+  }, [product, profile, isOpen])
+
   const simulation = useMemo(() => {
     if (!product || !profile) return null
 
-    // 1. Basic assumptions based on profile and product
-    const age = profile.age || 30
-    
-    // Parse tenure (fallback to 15 if not a number, or handle "Up to age 99")
-    let tenure = 15
-    if (product.tenure.includes('age 99')) {
-      tenure = 99 - age
-    } else {
-      const match = product.tenure.match(/\d+/)
-      if (match) tenure = parseInt(match[0], 10)
-    }
-
-    const annualPremium = product.minPremium
-    const totalPremiumPaid = annualPremium * tenure
+    const { age, annualPremium, ppt, tenure } = params
 
     // 2. Determine Return Rate
     let returnRate = 0.06 // default guaranteed rate
-    if (product.category === 'ulip' || product.returnType === 'market-linked') {
+    
+    let isAnnuity = false
+    let isProtection = false
+    let annualPension = 0
+    let healthCover = 0
+    let premiumRefund = 0
+    
+    if (product.id.includes('signature-assure')) {
+      if (profile.riskAppetite === 'aggressive') returnRate = 0.1249
+      else if (profile.riskAppetite === 'moderate') returnRate = 0.08
+      else returnRate = 0.04
+    } else if (product.id.includes('gift-pro')) {
+      returnRate = 0.05256
+    } else if (product.id.includes('protect-n-gain')) {
+      if (profile.riskAppetite === 'aggressive') returnRate = 0.0943
+      else if (profile.riskAppetite === 'moderate') returnRate = 0.0528
+      else returnRate = 0.04
+    } else if (product.id.includes('smartkid-360')) {
+      returnRate = 0.05719
+    } else if (product.category === 'annuity' || product.id.includes('gpp-flexi')) {
+      isAnnuity = true
+      annualPension = (annualPremium * ppt) * 0.1333
+    } else if (product.category === 'protection' || product.id.includes('iprotect')) {
+      isProtection = true
+      premiumRefund = product.id.includes('return') ? annualPremium * ppt : 0
+    } else if (product.id.includes('wish')) {
+      isProtection = true
+      healthCover = 3500000
+    } else if (product.category === 'ulip' || product.returnType === 'market-linked') {
       if (profile.riskAppetite === 'aggressive') returnRate = 0.12
       else if (profile.riskAppetite === 'moderate') returnRate = 0.10
       else returnRate = 0.08
@@ -40,17 +114,103 @@ export default function ProductSimulationModal({ product, profile, isOpen, onClo
       returnRate = 0.08
     }
 
-    // 3. Calculate Projected Fund Value at Maturity (FV of Annuity)
-    // Formula: P * [ ((1 + r)^t - 1) / r ] * (1 + r)
-    const maturityValue = annualPremium * ((Math.pow(1 + returnRate, tenure) - 1) / returnRate) * (1 + returnRate)
+    const totalPremiumPaid = annualPremium * ppt
+
+    // 3. Calculate Projected Fund Value at Maturity
+    let maturityValue = 0
+
+    if (product.category === 'ulip' || product.returnType === 'market-linked') {
+      // Month-by-month recursive formula based on regulatory insurance deductions
+      let U = 0
+      const P = annualPremium / 12
+      const t1 = ppt
+      const t2 = tenure
+      const r = returnRate
+      const FMC = 0.0135
+      // Signature Assure has 10x Annual Premium as life cover
+      const SA = product.id.includes('signature-assure') ? annualPremium * 10 : (product.coverageUpTo > 0 ? product.coverageUpTo : annualPremium * 10)
+
+      for (let m = 1; m <= t2 * 12; m++) {
+        // Premium Allocation Charge: typically front-loaded
+        const PAC = m <= 5 * 12 ? 0.05 : 0.0
+        // Policy Administration Charge: flat monthly fee
+        const Admin = 100
+        
+        // Mortality Charge: based on Sum at Risk
+        const sumAtRisk = Math.max(0, SA - U)
+        const mortalityRate = 0.0012 / 12 // ~1.2 per 1000 annually
+        const MC = sumAtRisk * mortalityRate
+        
+        const currentP = m <= t1 * 12 ? P : 0
+        
+        // Recursive step
+        U = (U + currentP * (1 - PAC) - MC - Admin) * (1 + (r - FMC) / 12)
+      }
+      
+      maturityValue = U
+    } else if (product.id.includes('gift-pro')) {
+      // Algebraic Formula for ICICI Pru GIFT Pro (Lump Sum option)
+      // Phase 1: Annuity Due (Accumulation Phase)
+      // Phase 2: Lock-in Phase (Compounding without contributions)
+      // MV = P * [ ((1 + r)^n - 1) / r ] * (1 + r)^(m - n + 1)
+      const P = annualPremium
+      const n = ppt
+      const m = tenure
+      const r = returnRate // Expected around 0.05256 for this product
+      
+      const fvAnnuity = P * ((Math.pow(1 + r, n) - 1) / r) * (1 + r)
+      maturityValue = fvAnnuity * Math.pow(1 + r, m - n)
+    } else if (product.id.includes('protect-n-gain')) {
+      // Algebraic Formula for Monthly SIP over PPT, compounded over PT
+      // FV(r/12, n*12, -P, 0, 1) * (1 + r/12)^((m - n)*12)
+      const P = annualPremium / 12
+      const n = ppt
+      const m = tenure
+      const r = returnRate // 0.0528 or 0.0943
+      const monthlyR = r / 12
+      
+      const fvAnnuity = P * ((Math.pow(1 + monthlyR, n * 12) - 1) / monthlyR) * (1 + monthlyR)
+      maturityValue = fvAnnuity * Math.pow(1 + monthlyR, (m - n) * 12)
+    } else if (product.id.includes('smartkid-360')) {
+      // Algebraic Formula for SmartKid 360 (Increasing Income Option)
+      const P = annualPremium
+      const SA = P * 10
+      const r = returnRate
+      
+      const p1 = SA * 0.18
+      const p2 = p1 + (SA * 0.08)
+      const p3 = p2 + (SA * 0.08)
+      const p4 = p3 + (SA * 0.08)
+      
+      let fvPremiums = 0
+      for (let t = 1; t <= ppt; t++) {
+        fvPremiums += P * Math.pow(1 + r, tenure - t)
+      }
+      
+      let fvPayouts = 0
+      fvPayouts += p1 * Math.pow(1 + r, tenure - 13)
+      fvPayouts += p2 * Math.pow(1 + r, tenure - 14)
+      fvPayouts += p3 * Math.pow(1 + r, tenure - 15)
+      fvPayouts += p4 * Math.pow(1 + r, tenure - 16)
+      
+      const finalMaturity = fvPremiums - fvPayouts
+      maturityValue = p1 + p2 + p3 + p4 + finalMaturity
+    } else {
+      // Standard generic formula for non-ULIPs (assuming PPT = Tenure for simplicity here)
+      maturityValue = annualPremium * ((Math.pow(1 + returnRate, tenure) - 1) / returnRate) * (1 + returnRate)
+    }
 
     // 4. Life Cover
-    const lifeCover = product.coverageUpTo > 0 ? product.coverageUpTo : annualPremium * 10
+    let lifeCover = product.coverageUpTo > 0 ? product.coverageUpTo : annualPremium * 10
+    if (product.id.includes('signature-assure')) lifeCover = annualPremium * 10
+    if (product.id.includes('protect-n-gain')) lifeCover = 10000000 // 1 Crore
+    if (product.id.includes('iprotect') || product.category === 'protection') lifeCover = 20000000 // 2 Crore as per screenshot
+    if (product.category === 'annuity' || product.id.includes('gpp-flexi')) lifeCover = annualPremium * ppt // Return of Premium
 
     // 5. Tax Benefits (Assumption: 30% tax bracket, max 1.5L under 80C)
     const eligible80C = Math.min(annualPremium, 150000)
     const taxSavedYearly = eligible80C * 0.30
-    const totalTaxSaved = taxSavedYearly * tenure
+    const totalTaxSaved = taxSavedYearly * ppt
 
     return {
       age,
@@ -61,9 +221,14 @@ export default function ProductSimulationModal({ product, profile, isOpen, onClo
       maturityValue,
       lifeCover,
       taxSavedYearly,
-      totalTaxSaved
+      totalTaxSaved,
+      isAnnuity,
+      isProtection,
+      annualPension,
+      healthCover,
+      premiumRefund
     }
-  }, [product, profile])
+  }, [product, profile, params])
 
   if (!isOpen || !product) return null
 
@@ -97,6 +262,73 @@ export default function ProductSimulationModal({ product, profile, isOpen, onClo
             ) : simulation ? (
               <div className="space-y-6">
                 
+                {/* Interactive Inputs */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                  <div>
+                    <label className="flex justify-between text-xs font-semibold text-brand-navy mb-2">
+                      <span>Annual Premium</span>
+                      <span className="text-brand-orange">{formatCurrency(params.annualPremium)}</span>
+                    </label>
+                    <input 
+                      type="range" 
+                      min={product.minPremium || 10000} 
+                      max={product.category === 'protection' ? 100000 : 5000000} 
+                      step={5000}
+                      value={params.annualPremium}
+                      onChange={e => setParams(p => ({ ...p, annualPremium: Number(e.target.value) }))}
+                      className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-orange"
+                    />
+                  </div>
+                  
+                  {product.category !== 'annuity' && (
+                    <div>
+                      <label className="flex justify-between text-xs font-semibold text-brand-navy mb-2">
+                        <span>Policy Term (Years)</span>
+                        <span className="text-brand-orange">{params.tenure} yrs</span>
+                      </label>
+                      <input 
+                        type="range" 
+                        min={5} 
+                        max={60} 
+                        step={1}
+                        value={params.tenure}
+                        onChange={e => setParams(p => ({ ...p, tenure: Number(e.target.value) }))}
+                        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-orange"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="flex justify-between text-xs font-semibold text-brand-navy mb-2">
+                      <span>Premium Payment Term</span>
+                      <span className="text-brand-orange">{params.ppt} yrs</span>
+                    </label>
+                    <input 
+                      type="range" 
+                      min={1} 
+                      max={params.tenure} 
+                      step={1}
+                      value={params.ppt}
+                      onChange={e => setParams(p => ({ ...p, ppt: Number(e.target.value) }))}
+                      className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-orange"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex justify-between text-xs font-semibold text-brand-navy mb-2">
+                      <span>Current Age</span>
+                      <span className="text-brand-orange">{params.age} yrs</span>
+                    </label>
+                    <input 
+                      type="range" 
+                      min={18} 
+                      max={65} 
+                      step={1}
+                      value={params.age}
+                      onChange={e => setParams(p => ({ ...p, age: Number(e.target.value) }))}
+                      className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-orange"
+                    />
+                  </div>
+                </div>
+
                 {/* Summary Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="card bg-white border-brand-orange/20 p-4">
@@ -106,19 +338,43 @@ export default function ProductSimulationModal({ product, profile, isOpen, onClo
                     <p className="text-[10px] text-gray-500 mt-1">{formatCurrency(simulation.annualPremium)} / year</p>
                   </div>
                   
-                  <div className="card bg-white border-green-500/20 p-4">
-                    <TrendingUp size={16} className="text-green-500 mb-2" />
-                    <p className="text-[10px] font-semibold uppercase text-gray-400 tracking-wider mb-1">Projected Maturity</p>
-                    <p className="text-lg font-display font-bold text-green-600">{formatCurrency(Math.round(simulation.maturityValue))}</p>
-                    <p className="text-[10px] text-gray-500 mt-1">@{Math.round(simulation.returnRate * 100)}% est. return</p>
-                  </div>
+                  {simulation.isAnnuity && (
+                    <div className="card bg-white border-green-500/20 p-4">
+                      <TrendingUp size={16} className="text-green-500 mb-2" />
+                      <p className="text-[10px] font-semibold uppercase text-gray-400 tracking-wider mb-1">Annual Pension</p>
+                      <p className="text-lg font-display font-bold text-green-600">{formatCurrency(Math.round(simulation.annualPension))}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">Lifelong Payout</p>
+                    </div>
+                  )}
 
-                  <div className="card bg-white border-brand-navy/20 p-4">
-                    <Shield size={16} className="text-brand-navy mb-2" />
-                    <p className="text-[10px] font-semibold uppercase text-gray-400 tracking-wider mb-1">Life Cover</p>
-                    <p className="text-lg font-display font-bold text-brand-navy">{formatCurrency(simulation.lifeCover)}</p>
-                    <p className="text-[10px] text-gray-500 mt-1">From Day 1</p>
-                  </div>
+                  {!simulation.isProtection && !simulation.isAnnuity && (
+                    <div className="card bg-white border-green-500/20 p-4">
+                      <TrendingUp size={16} className="text-green-500 mb-2" />
+                      <p className="text-[10px] font-semibold uppercase text-gray-400 tracking-wider mb-1">Projected Maturity</p>
+                      <p className="text-lg font-display font-bold text-green-600">{formatCurrency(Math.round(simulation.maturityValue))}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">@{Math.round(simulation.returnRate * 100)}% est. return</p>
+                    </div>
+                  )}
+
+                  {simulation.isProtection && simulation.premiumRefund > 0 ? (
+                    <div className="card bg-white border-brand-navy/20 p-4">
+                      <Landmark size={16} className="text-brand-navy mb-2" />
+                      <p className="text-[10px] font-semibold uppercase text-gray-400 tracking-wider mb-1">Premium Refund</p>
+                      <p className="text-lg font-display font-bold text-brand-navy">{formatCurrency(simulation.premiumRefund)}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">At Maturity</p>
+                    </div>
+                  ) : (
+                    <div className="card bg-white border-brand-navy/20 p-4">
+                      <Shield size={16} className="text-brand-navy mb-2" />
+                      <p className="text-[10px] font-semibold uppercase text-gray-400 tracking-wider mb-1">
+                        {simulation.isAnnuity ? 'Death Benefit' : 'Life Cover'}
+                      </p>
+                      <p className="text-lg font-display font-bold text-brand-navy">{formatCurrency(simulation.lifeCover)}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        {simulation.isAnnuity ? 'Return of Premium' : 'From Day 1'}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="card bg-white border-purple-500/20 p-4">
                     <Landmark size={16} className="text-purple-500 mb-2" />
@@ -154,7 +410,9 @@ export default function ProductSimulationModal({ product, profile, isOpen, onClo
                       <div className="flex flex-col items-center">
                         <div className="w-4 h-4 rounded-full bg-green-500 ring-4 ring-white z-10" />
                         <span className="text-[10px] font-bold text-brand-navy mt-2">Age {simulation.age + simulation.tenure}</span>
-                        <span className="text-[10px] text-gray-400">Maturity</span>
+                        <span className="text-[10px] text-gray-400">
+                          {simulation.isAnnuity ? 'Lifelong Payouts' : 'Maturity'}
+                        </span>
                       </div>
                     </div>
                   </div>

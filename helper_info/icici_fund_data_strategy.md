@@ -19,7 +19,7 @@ We now use the **7 products for which we actually have brochure data**:
 | 4 | `ICICI_Pru_Protect_N_Gain_Brochure.pdf` | **ICICI Pru Protect N Gain** | ULIP | ✅ Yes (Equity, Debt, Balanced) |
 | 5 | `ICICI-Pru-Wish-Brochure.pdf` | **ICICI Pru Wish** | Health Insurance | ✅ Yes (via Health Saver — Equity, Debt, Balanced) |
 | 6 | `ICICI_Pru_GPP_Flexi_Brochure.pdf` | **ICICI Pru Guaranteed Pension Plan Flexi** | Retirement (Annuity) | ❌ No (non-linked, guaranteed annuity) |
-| 7 | `ICICI-Pru-Smart-Kid-360-Brochure.pdf` | **ICICI Pru SmartKid 360** | Child Plan (Guaranteed) | ❌ No (non-linked, guaranteed savings) |
+| 7 | `ICICI-Pru-Smart-Kid-360-Brochure.pdf` | **ICICI Pru SmartKid 360** | Child Plan (ULIP) | ✅ Yes (Proxy via Signature Assure) |
 
 ---
 
@@ -265,24 +265,26 @@ We now use the **7 products for which we actually have brochure data**:
 
 ---
 
-## Product 7: ICICI Pru SmartKid 360 (Category: Child Plan / Guaranteed Savings)
+## Product 7: ICICI Pru SmartKid 360 (Category: Child Plan / ULIP)
 
 > [!NOTE]
-> This is a **non-participating, guaranteed savings product** — NOT a ULIP. Returns are fully guaranteed, aligned with the child's educational milestones (e.g., Class 10, Class 12, graduation, post-graduation). If the parent passes away, future premiums are waived and benefits continue uninterrupted.
+> This is a **Unit Linked Insurance Plan (ULIP)** designed for child education goals. It offers market-linked returns through Equity, Debt, and Balanced funds. We use the fund performance data from Signature Assure as a proxy for its return calculations.
 
 ### Fund Data
-**None** — this is not a ULIP. No NAV, no equity/debt funds. Returns are contractually guaranteed at inception.
+**Proxy from Signature Assure:**
+- Equity: 10.99%
+- Balanced: 8.22%
+- Debt: 5.05%
 
 ### Return Calculation Strategy
-- **Return Rate:** **6.0%** (based on IRDAI illustration rates for non-participating guaranteed savings plans)
-- **All risk appetites** → **6.0%** (guaranteed product — no market risk variation)
+- **Aggressive risk appetite** → Use Equity avg: **10.99%**
+- **Moderate risk appetite** → Use Balanced avg: **8.22%**
+- **Conservative risk appetite** → Use Debt avg: **5.05%**
 - **Key Benefits (from brochure):**
-  - **Guaranteed Maturity Benefit:** Fixed lump sum at policy maturity
-  - **MoneyBack at Milestones:** Guaranteed payouts aligned with child's education stages (Class 10, Class 12, graduation, post-graduation)
-  - **Premium Waiver:** If parent (life assured) passes away, all future premiums are waived — policy continues and full benefits are paid to the child
+  - **Market-Linked Growth:** Corpus grows based on fund performance
+  - **Premium Waiver:** If parent (life assured) passes away, all future premiums are waived — policy continues and funds keep growing for the child's education
   - **Life Cover for Parent:** Financial protection throughout the policy term
-  - **Guaranteed Premiums:** The premium amount and benefit are fixed and cannot change
-- **Simulation Note:** For child education goals, we calculate the total corpus needed at each milestone. The 6.0% effective return is applied to the premium stream to project the guaranteed maturity/milestone payouts.
+- **Simulation Note:** For child education goals, we calculate the corpus growth using CAGR based on the chosen risk profile.
 
 ---
 
@@ -296,7 +298,7 @@ We now use the **7 products for which we actually have brochure data**:
 | **Protect N Gain** | ULIP | 10.98% | 8.41% | 5.45% | Protection + market-linked growth |
 | **Wish** | Health (ULIP) | 10.98% | 8.37% | 5.96% | Health Saver funds + Health protection |
 | **GPP Flexi** | Retirement (Annuity) | 6.50% | 6.50% | 6.50% | Guaranteed pension for life |
-| **SmartKid 360** | Child Plan (Guaranteed) | 6.00% | 6.00% | 6.00% | Guaranteed milestones + Premium Waiver |
+| **SmartKid 360** | Child Plan (ULIP) | 10.99% | 8.22% | 5.05% | Market-linked growth + Premium Waiver |
 
 ---
 

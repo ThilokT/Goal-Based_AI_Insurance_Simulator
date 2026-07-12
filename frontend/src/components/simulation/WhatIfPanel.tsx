@@ -62,6 +62,8 @@ export default function WhatIfPanel() {
         target_amount: params.goalTargetAmounts?.[g.id] ?? g.corpusNeeded,
         target_year: params.goalTargetAges?.[g.id] ?? g.targetAge,
         priority: 1,
+        existing_savings: params.goalExistingSavings?.[g.id] || 0,
+        risk_override: params.goalRiskAppetites?.[g.id],
       })),
       // ── What-If params wired to backend ──
       inflation_rate: params.inflationRate / 100,
@@ -133,6 +135,9 @@ export default function WhatIfPanel() {
       annualIncrementPercent: 8,
       goalTargetAges: {},
       goalTargetAmounts: {},
+      goalExistingSavings: {},
+      enableSip: true,
+      goalRiskAppetites: {}
     }
     setWhatIfParams(defaults)
     
@@ -175,12 +180,33 @@ export default function WhatIfPanel() {
               min={4} max={12} unit="%"
               onChange={v => update('inflationRate', v)}
             />
-            <SliderRow
-              label="Annual SIP step-up"
-              value={whatIfParams.annualIncrementPercent}
-              min={0} max={20} unit="%"
-              onChange={v => update('annualIncrementPercent', v)}
-            />
+            <div className="flex items-center justify-between p-3 rounded-xl border border-gray-200">
+              <div>
+                <p className="text-xs font-medium text-gray-700">Enable SIP (Monthly Investment)</p>
+                <p className="text-[10px] text-gray-400">Calculate required monthly SIP</p>
+              </div>
+              <button
+                onClick={() => update('enableSip', !whatIfParams.enableSip)}
+                className={cn(
+                  'relative w-10 h-5 rounded-full transition-colors',
+                  whatIfParams.enableSip ? 'bg-brand-orange' : 'bg-gray-200'
+                )}
+              >
+                <motion.div
+                  animate={{ x: whatIfParams.enableSip ? 20 : 2 }}
+                  className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow"
+                />
+              </button>
+            </div>
+
+            {whatIfParams.enableSip && (
+              <SliderRow
+                label="Annual SIP step-up"
+                value={whatIfParams.annualIncrementPercent}
+                min={0} max={20} unit="%"
+                onChange={v => update('annualIncrementPercent', v)}
+              />
+            )}
 
             <div>
               <div className="flex items-center justify-between mb-2">

@@ -22,8 +22,7 @@ const CATEGORIES: { value: ProductCategory | 'all'; label: string }[] = [
 
 export default function ProductsPage() {
   const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<ProductCategory | 'all'>('all')
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set())
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [usingFallback, setUsingFallback] = useState(false)
@@ -35,8 +34,7 @@ export default function ProductsPage() {
     async function loadProducts() {
       setLoading(true)
       try {
-        const categoryParam = category !== 'all' ? `?category=${category}` : ''
-        const res = await api.get<BackendProductListResponse>(`/api/products${categoryParam}`)
+        const res = await api.get<BackendProductListResponse>(`/api/products`)
         if (!cancelled) {
           const mapped = res.products.map(mapBackendProduct)
           setProducts(mapped.length > 0 ? mapped : MOCK_PRODUCTS)
@@ -56,26 +54,38 @@ export default function ProductsPage() {
     }
     loadProducts()
     return () => { cancelled = true }
-  }, [category])
+  }, []) // Fetch all products once on mount
 
   const filtered = useMemo(() => {
     return products.filter(p => {
-      // Category filtering is already done server-side when API is available,
-      // but we still need client-side filter for mock fallback
-      const matchCat = usingFallback ? (category === 'all' || p.category === category) : true
+      // Filter by selected categories (if none selected, show all)
+      const matchCat = selectedCategories.size === 0 ? true : selectedCategories.has(p.category)
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.tagline.toLowerCase().includes(search.toLowerCase()) ||
         p.idealFor.some(i => i.toLowerCase().includes(search.toLowerCase()))
       return matchCat && matchSearch
     })
-  }, [search, category, products, usingFallback])
+  }, [search, selectedCategories, products])
+
+  const toggleCategory = (cat: ProductCategory | 'all') => {
+    if (cat === 'all') {
+      setSelectedCategories(new Set())
+    } else {
+      setSelectedCategories(prev => {
+        const next = new Set(prev)
+        if (next.has(cat)) next.delete(cat)
+        else next.add(cat)
+        return next
+      })
+    }
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-display font-bold text-gray-900">ICICI Prudential Products</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Explore {loading ? '...' : products.length} products across 5 categories
+          Explore {loading ? '...' : products.length} products across {CATEGORIES.length - 1} categories
           {usingFallback && (
             <span className="inline-flex items-center gap-1 ml-2 text-amber-500">
               <WifiOff size={11} /> offline mode
@@ -96,20 +106,25 @@ export default function ProductsPage() {
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {CATEGORIES.map(c => (
-            <button
-              key={c.value}
-              onClick={() => setCategory(c.value as ProductCategory | 'all')}
-              className={cn(
-                'text-xs font-medium px-3 py-2 rounded-lg border transition-all whitespace-nowrap',
-                category === c.value
-                  ? 'border-brand-orange bg-brand-orange text-white shadow-orange'
-                  : 'border-gray-200 text-gray-600 hover:border-brand-orange/40'
-              )}
-            >
-              {c.label}
-            </button>
-          ))}
+          {CATEGORIES.map(c => {
+            const isSelected = c.value === 'all' 
+                ? selectedCategories.size === 0 
+                : selectedCategories.has(c.value as ProductCategory);
+            return (
+              <button
+                key={c.value}
+                onClick={() => toggleCategory(c.value as ProductCategory | 'all')}
+                className={cn(
+                  'text-xs font-medium px-3 py-2 rounded-lg border transition-all whitespace-nowrap',
+                  isSelected
+                    ? 'border-brand-orange bg-brand-orange text-white shadow-orange'
+                    : 'border-gray-200 text-gray-600 hover:border-brand-orange/40'
+                )}
+              >
+                {c.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -126,11 +141,10 @@ export default function ProductsPage() {
 
       {/* Products grid */}
       {!loading && (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
           <AnimatePresence>
             {filtered.map((product, i) => {
               const meta = CATEGORY_META[product.category]
-              const isExpanded = expanded === product.id
               return (
                 <motion.div
                   key={product.id}
@@ -139,8 +153,7 @@ export default function ProductsPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: i * 0.04 }}
-                  className="card flex flex-col hover:shadow-card-hover transition-all duration-200 cursor-pointer"
-                  onClick={() => setExpanded(isExpanded ? null : product.id)}
+                  className="card flex flex-col hover:shadow-card-hover transition-all duration-200"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <span className={meta?.color ?? 'badge-orange'}>{meta?.label ?? product.category}</span>
@@ -169,13 +182,12 @@ export default function ProductsPage() {
                     </div>
                   </div>
 
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="mt-4 pt-4 border-t border-gray-100 space-y-3 overflow-hidden"
-                      >
+                  <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                        {product.description && (
+                          <div className="mb-3 text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-md border border-gray-100 max-h-32 overflow-y-auto">
+                            {product.description}
+                          </div>
+                        )}
                         <div>
                           <p className="section-label mb-2">Key benefits</p>
                           <ul className="space-y-1">
@@ -209,13 +221,6 @@ export default function ProductsPage() {
                             <ExternalLink size={14} />
                           </button>
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="flex items-center gap-1 mt-3 text-xs text-gray-400">
-                    <span>{isExpanded ? 'Show less' : 'View details'}</span>
-                    <ChevronDown size={12} className={cn('transition-transform', isExpanded && 'rotate-180')} />
                   </div>
                 </motion.div>
               )

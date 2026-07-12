@@ -79,6 +79,7 @@ export interface BackendProductListResponse {
 }
 
 import type { Product, ProductCategory } from '../types'
+import { MOCK_PRODUCTS } from '../mocks/products'
 
 // Display-enhancement layer: fills in fields the backend doesn't have yet
 const PRODUCT_DISPLAY_ENHANCEMENTS: Record<string, Partial<Product>> = {
@@ -95,16 +96,46 @@ const PRODUCT_DISPLAY_ENHANCEMENTS: Record<string, Partial<Product>> = {
 }
 
 export function mapBackendProduct(bp: BackendProduct): Product {
-  const enhancements = PRODUCT_DISPLAY_ENHANCEMENTS[bp.product_id] ?? {}
+  // First try to find display enhancements in our updated mock catalog by matching names or IDs
+  const bpNameLower = bp.name.toLowerCase()
+  const mockMatch = MOCK_PRODUCTS.find(m => {
+    const mNameLower = m.name.toLowerCase()
+    return m.id === bp.product_id || 
+           bpNameLower === mNameLower ||
+           bpNameLower.includes(mNameLower) ||
+           // specific check for GPP Flexi
+           (bpNameLower.includes('guaranteed pension plan flexi') && mNameLower.includes('gpp flexi')) ||
+           // specific check for signature
+           (bpNameLower.includes('signature assure') && mNameLower.includes('signature assure'))
+  })
+
+  const enhancements = (mockMatch as Partial<Product>) || PRODUCT_DISPLAY_ENHANCEMENTS[bp.product_id] || {}
+  
   const policyTenure = bp.policy_term_min && bp.policy_term_max
     ? `${bp.policy_term_min} – ${bp.policy_term_max} years`
     : enhancements.tenure ?? 'N/A'
 
+  // Determine category. Scraped categories might not perfectly match UI categories.
+  // Fall back to the mock category if we found a match.
+  let finalCategory = bp.category as ProductCategory
+  if (mockMatch && !['protection', 'ulip', 'participating', 'non-participating', 'annuity'].includes(finalCategory)) {
+    finalCategory = mockMatch.category
+  }
+
+  // Create a reasonable tagline if we don't have one
+  let finalTagline = enhancements.tagline || ''
+  if (!finalTagline && bp.description) {
+    // If no tagline, take the first sentence of the description or truncate it
+    const firstSentence = bp.description.split('.')[0]
+    finalTagline = firstSentence.length > 80 ? firstSentence.substring(0, 77) + '...' : firstSentence
+  }
+
   return {
     id: bp.product_id,
     name: bp.name,
-    category: bp.category as ProductCategory,
-    tagline: enhancements.tagline ?? bp.description ?? '',
+    category: finalCategory,
+    tagline: finalTagline,
+    description: bp.description || '',
     minPremium: enhancements.minPremium ?? 0,
     coverageUpTo: enhancements.coverageUpTo ?? 0,
     keyBenefits: bp.key_benefits?.length ? bp.key_benefits : (enhancements.keyBenefits ?? []),
@@ -173,6 +204,7 @@ export interface SimulateRequest {
   risk_appetite?: string
   goals: GoalInput[]
   // What-If parameters
+  enable_sip?: boolean | null
   inflation_rate?: number | null
   existing_savings?: number | null
   annual_increment_percent?: number | null

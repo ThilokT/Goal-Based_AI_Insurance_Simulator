@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { AuthUser, ConversationResponse, ConversationDetailResponse } from '../types/api'
 import type { BackendGoalListResponse, GoalRequest } from '../types/api'
-import type { UserProfile, Message, WhatIfParams, SimulationResult, LifeGoal } from '../types'
+import type { UserProfile, Message, WhatIfParams, SimulationResult, LifeGoal, YearlyProjection } from '../types'
 import { api } from '../lib/apiClient'
 
 // ─── Goal type mapper (backend → frontend) ───────────────────
@@ -106,6 +106,8 @@ interface AppState {
   setProductWhatIfParams: (p: Partial<{ monthlyPremium: number; tenureYears: number }>) => void
   simulationMode: 'goals' | 'product'
   setSimulationMode: (mode: 'goals' | 'product') => void
+  isProfileLoading: boolean
+  setIsProfileLoading: (v: boolean) => void
   isOffline: boolean
   setIsOffline: (v: boolean) => void
   isSimulating: boolean
@@ -228,7 +230,9 @@ export const useAppStore = create<AppState>()(
           conversationId: id,
           messages: cachedMessages || [],
           chatTurn: cachedMessages ? Math.floor(cachedMessages.length / 2) : 0,
-          isChatLoading: !cachedMessages
+          isChatLoading: !cachedMessages,
+          simulationResults: [], // Clear stale simulation data
+          yearlyProjections: [],
         })
         try {
           if (cachedMessages) {
@@ -517,6 +521,9 @@ export const useAppStore = create<AppState>()(
         annualIncrementPercent: 8,
         goalTargetAges: {},
         goalTargetAmounts: {},
+        goalExistingSavings: {},
+        enableSip: true,
+        goalRiskAppetites: {},
       },
       setWhatIfParams: (p) => set((state) => ({ 
         whatIfParams: { ...state.whatIfParams, ...p } 

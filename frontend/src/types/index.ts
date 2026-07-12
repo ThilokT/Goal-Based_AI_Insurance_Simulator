@@ -5,6 +5,7 @@ export interface Product {
   name: string
   category: ProductCategory
   tagline: string
+  description: string
   minPremium: number
   coverageUpTo: number
   keyBenefits: string[]
@@ -35,6 +36,7 @@ export interface UserProfile {
   maritalStatus?: string
   occupation?: string
   goals: string[]
+  editableGoals?: any[]
 }
 
 export interface SimulationResult {
@@ -72,4 +74,7 @@ export interface WhatIfParams {
   annualIncrementPercent: number
   goalTargetAges?: Record<string, number>
   goalTargetAmounts?: Record<string, number>
+  goalExistingSavings?: Record<string, number>
+  enableSip: boolean
+  goalRiskAppetites?: Record<string, 'conservative' | 'moderate' | 'aggressive'>
 }

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Loader2, Bot, User, Sparkles, RotateCcw, WifiOff, MessageSquare, Plus, Edit2, Trash2, Check, X, ChevronUp, ChevronDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useAppStore } from '../../store'
-import { streamChat, ApiError } from '../../lib/apiClient'
+import { streamChat, ApiError, api } from '../../lib/apiClient'
 import { streamChatResponse } from '../../mocks/chat'
 import type { Message } from '../../types'
 
@@ -228,8 +228,9 @@ export default function ChatPanel() {
         }
       } catch (err: unknown) {
         // Backend unavailable — fall through to mock for THIS request only
-        console.warn('Chat SSE failed, falling back to mock:', err instanceof ApiError ? err.detail : err)
-        accumulated = ''
+        const errorDetail = err instanceof ApiError ? err.detail : String(err)
+        console.warn('Chat SSE failed, falling back to mock:', errorDetail)
+        accumulated = `Connection Error: ${errorDetail}`
       }
     }
 
