@@ -11,7 +11,7 @@ files_info = {
     "GppFlexiGoalCard.tsx": "totalPaid"
 }
 
-dir_path = "frontend/src/components/timeline"
+dir_path = "src/components/timeline"
 
 for filename, var_name in files_info.items():
     filepath = os.path.join(dir_path, filename)

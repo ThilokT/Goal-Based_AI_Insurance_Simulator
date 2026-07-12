@@ -369,6 +369,8 @@ export default function GiftProGoalCard({
                   )}
               </div>
               
+              </div>
+              
               {/* Total Invested Summary */}
               <div className="bg-gray-50 flex justify-between items-center border-t border-gray-200 mt-6 p-4 rounded-xl">
                 <div>
