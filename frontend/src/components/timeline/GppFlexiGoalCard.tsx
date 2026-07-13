@@ -23,7 +23,11 @@ export default function GppFlexiGoalCard({
   catColor,
   isSimulating,
 }: GppFlexiGoalCardProps) {
+  const setWhatIfParams = useAppStore(state => state.setWhatIfParams);
+  const globalWhatIfParams = useAppStore(state => state.whatIfParams);
+
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardPayout = useAppStore(state => state.setCardPayout);
 
   // Local state for interactive UI mirroring the ICICI calculator
   const initialAnnualPremium = (result.monthlyPremium || 25000) * 12
@@ -78,8 +82,9 @@ export default function GppFlexiGoalCard({
   useEffect(() => {
     if (result?.goalId || goal?.id) {
       setCardInvestment(result?.goalId || goal?.id, totalPaid);
+      setCardPayout(result?.goalId || goal?.id, withRop ? totalPensionWithRop : totalPensionWithoutRop);
     }
-  }, [totalPaid, result?.goalId || goal?.id, setCardInvestment]);
+  }, [totalPaid, totalPensionWithRop, totalPensionWithoutRop, withRop, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
 
   return (
     <motion.div 
@@ -132,6 +137,42 @@ export default function GppFlexiGoalCard({
               Single Life
             </div>
           </div>
+          
+            {/* Dynamic Coverage Banner */}
+            <div className="bg-emerald-50 p-3 border-b border-emerald-100 flex justify-between items-center">
+               <div>
+                 <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Coverage</p>
+                 <p className="text-sm font-display font-bold text-gray-900">₹{Math.round(withRop ? totalPensionWithRop : totalPensionWithoutRop).toLocaleString('en-IN')}</p>
+               </div>
+               <div className="text-right">
+                 <div className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
+                   {((globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0) > 0 ? Math.round(((withRop ? totalPensionWithRop : totalPensionWithoutRop) / ((globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0)) * 100) : 0}% of Target
+                 </div>
+               </div>
+            </div>
+
+            {/* Corpus Needed Input */}
+            <div className="bg-orange-50/40 p-3 border-b border-orange-100 flex justify-between items-center">
+              <label className="text-xs font-bold text-gray-700">Corpus Needed / Target Amount</label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 text-sm">₹</span>
+                <input 
+                  type="number" 
+                  value={(globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setWhatIfParams({
+                      ...globalWhatIfParams,
+                      goalTargetAmounts: {
+                        ...(globalWhatIfParams?.goalTargetAmounts || {}),
+                        [result?.goalId || goal?.id]: val
+                      }
+                    });
+                  }}
+                  className="bg-white border border-gray-300 rounded px-2 py-1 text-sm font-bold text-gray-800 w-32 outline-none"
+                />
+              </div>
+            </div>
 
           <div className="p-5">
             {/* Calculator Controls */}
@@ -140,19 +181,16 @@ export default function GppFlexiGoalCard({
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
                   Investment Amount (Yearly)
                 </label>
-                <div className="font-display text-lg font-bold text-gray-900 mb-2">
-                  {formatCurrency(investmentAmount)}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 font-bold text-lg">₹</span>
+                  <input
+                    type="number"
+                    value={investmentAmount}
+                    disabled={isSimulating}
+                    onChange={(e) => setInvestmentAmount(Number(e.target.value))}
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-lg font-display font-bold text-gray-900 outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all"
+                  />
                 </div>
-                <input 
-                  type="range"
-                  min={50000}
-                  max={2000000}
-                  step={10000}
-                  value={investmentAmount}
-                  disabled={isSimulating}
-                  onChange={(e) => setInvestmentAmount(Number(e.target.value))}
-                  className="w-full accent-purple-600 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
               </div>
               
               <div className="col-span-1 flex flex-col justify-between">
@@ -284,15 +322,27 @@ export default function GppFlexiGoalCard({
 
             </div>
 
-            {/* Total Invested Summary */}
-            <div className="bg-gray-50 flex justify-between items-center border-t border-gray-200 mt-6 p-4 rounded-xl">
-              <div>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total Amount Invested</p>
-                <p className="text-xs text-gray-600 font-medium">Over {ppt} years</p>
-              </div>
-              <div className="text-lg font-display font-bold text-gray-900">
-                {formatCurrency(totalPaid)}
-              </div>
+            {/* Total Invested and Payout Summary */}
+            <div className="bg-gray-50 flex flex-col gap-3 border-t border-gray-200 mt-6 p-4 rounded-xl">
+               <div className="flex justify-between items-center">
+                 <div>
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Total Amount Invested</p>
+                   <p className="text-xs text-gray-400">Over {ppt} years</p>
+                 </div>
+                 <div className="text-xl font-display font-bold text-gray-900">
+                   {formatCurrency(totalPaid)}
+                 </div>
+               </div>
+               <div className="border-t border-gray-200 w-full" />
+               <div className="flex justify-between items-center">
+                 <div>
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Total Payout</p>
+                   <p className="text-xs text-gray-400">Total Pension Received</p>
+                 </div>
+                 <div className="text-xl font-display font-bold text-emerald-600">
+                   {formatCurrency(withRop ? totalPensionWithRop : totalPensionWithoutRop)}
+                 </div>
+               </div>
             </div>
 
           </div>

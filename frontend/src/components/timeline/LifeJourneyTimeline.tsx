@@ -137,8 +137,6 @@ export default function LifeJourneyTimeline() {
   useEffect(() => {
     if (!profile || goals.length === 0) return
 
-    setIsSimulating(true)
-
     const timeoutId = setTimeout(() => {
       async function runSim() {
         try {

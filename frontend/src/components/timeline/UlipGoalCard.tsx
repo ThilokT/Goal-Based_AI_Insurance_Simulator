@@ -70,7 +70,11 @@ export default function UlipGoalCard({
   isEven,
   catColor
 }: UlipGoalCardProps) {
+  const setWhatIfParams = useAppStore(state => state.setWhatIfParams);
+  const globalWhatIfParams = useAppStore(state => state.whatIfParams);
+
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardPayout = useAppStore(state => state.setCardPayout);
 
   
   // State
@@ -145,8 +149,9 @@ export default function UlipGoalCard({
   useEffect(() => {
     if (result?.goalId || goal?.id) {
       setCardInvestment(result?.goalId || goal?.id, totalPremium);
+      setCardPayout(result?.goalId || goal?.id, assumedReturnAmount);
     }
-  }, [totalPremium, result?.goalId || goal?.id, setCardInvestment]);
+  }, [totalPremium, assumedReturnAmount, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
 
   return (
     <motion.div 
@@ -184,6 +189,42 @@ export default function UlipGoalCard({
               <p className="text-xs text-gray-500 font-medium">{result.recommendedProductName || 'ICICI Pru Signature Assure'}</p>
             </div>
           </div>
+
+            {/* Dynamic Coverage Banner */}
+            <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200 mb-4 mx-4 mt-4 sm:mx-5 flex justify-between items-center shadow-sm">
+               <div>
+                 <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Coverage</p>
+                 <p className="text-sm font-display font-bold text-gray-900">{formatAmount(assumedReturnAmount)}</p>
+               </div>
+               <div className="text-right">
+                 <div className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
+                   {((globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0) > 0 ? Math.round((assumedReturnAmount / ((globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0)) * 100) : 0}% of Target
+                 </div>
+               </div>
+            </div>
+
+            {/* Corpus Needed Input */}
+            <div className="bg-orange-50/40 p-3 rounded-lg border border-orange-100 mb-5 mx-4 mt-4 flex justify-between items-center sm:mx-5">
+              <label className="text-xs font-bold text-gray-700">Corpus Needed / Target Amount</label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 text-sm">₹</span>
+                <input 
+                  type="number" 
+                  value={(globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setWhatIfParams({
+                      ...globalWhatIfParams,
+                      goalTargetAmounts: {
+                        ...(globalWhatIfParams?.goalTargetAmounts || {}),
+                        [result?.goalId || goal?.id]: val
+                      }
+                    });
+                  }}
+                  className="bg-white border border-gray-300 rounded px-2 py-1 text-sm font-bold text-gray-800 w-32 outline-none"
+                />
+              </div>
+            </div>
 
           <div className="flex flex-col md:flex-col">
             {/* Left Panel - Inputs */}

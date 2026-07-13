@@ -37,7 +37,7 @@ function SliderRow({
 }
 
 export default function WhatIfPanel() {
-  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating, cardInvestments } = useAppStore()
+  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating, cardInvestments, cardPayouts } = useAppStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Use chat context profile if available
@@ -197,7 +197,16 @@ export default function WhatIfPanel() {
               <label className="text-xs font-medium text-gray-700">Total Invested</label>
               <span className="text-sm font-bold text-[#b73238]">
                 {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
-                  Object.values(cardInvestments).reduce((a, b) => a + (Number(b) || 0), 0)
+                  Object.values(cardInvestments || {}).reduce((a, b) => a + (Number(b) || 0), 0)
+                )}
+              </span>
+            </div>
+
+            <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100 flex items-center justify-between">
+              <label className="text-xs font-medium text-gray-700">Total Payout</label>
+              <span className="text-sm font-bold text-emerald-700">
+                {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
+                  Object.values(cardPayouts || {}).reduce((a, b) => a + (Number(b) || 0), 0)
                 )}
               </span>
             </div>

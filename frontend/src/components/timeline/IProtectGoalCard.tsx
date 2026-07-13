@@ -132,7 +132,7 @@ export default function IProtectGoalCard({
   isSimulating,
 }: IProtectGoalCardProps) {
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
-
+  const setCardPayout = useAppStore(state => state.setCardPayout);
   // Local state for interactive UI mirroring the ICICI calculator
   const initialLifeCover = goal.corpusNeeded || 10000000
   
@@ -185,6 +185,12 @@ export default function IProtectGoalCard({
   const finalMonthly = subTotalMonthly * paymentTermMultipliers[paymentTerm].mult
   const totalInvested = finalMonthly * 12 * paymentTermMultipliers[paymentTerm].years
   
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      setCardInvestment(result?.goalId || goal?.id, totalInvested);
+      setCardPayout(result?.goalId || goal?.id, lifeCover);
+    }
+  }, [totalInvested, lifeCover, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
   const formatExactCurrency = (num: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num)
   }
@@ -414,12 +420,6 @@ export default function IProtectGoalCard({
                   
                   // Hide limited pay options if they exceed the cover term
                   if (p.years > regularYears) return null
-
-  useEffect(() => {
-    if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, totalInvested);
-    }
-  }, [totalInvested, result?.goalId || goal?.id, setCardInvestment]);
 
                   return (
                     <div 

@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    # Add any environment variables the backend needs below
+    # environment:
+    #   - DATABASE_URL=postgres://...
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Change this to your production domain (e.g. https://api.yourdomain.com) if deploying to a remote server.
+        # Otherwise, if accessing locally, localhost is fine.
+        - VITE_API_BASE_URL=http://localhost:8000
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      - backend

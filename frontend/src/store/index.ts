@@ -116,6 +116,9 @@ interface AppState {
   cardInvestments: Record<string, number>
   setCardInvestment: (goalId: string, amount: number) => void
 
+  cardPayouts: Record<string, number>
+  setCardPayout: (goalId: string, amount: number) => void
+
   // Products (cached count from API)
   productCount: number
   setProductCount: (n: number) => void
@@ -326,7 +329,7 @@ export const useAppStore = create<AppState>()(
           conversationId: null,
           messages: [],
           chatTurn: 0,
-          profile: { name: get().user?.full_name || 'User', goals: [] },
+          profile: { name: get().user?.name || 'User', goals: [] },
           goals: []
         })
       },
@@ -380,7 +383,7 @@ export const useAppStore = create<AppState>()(
         const currentGlobalProfile = get().profile
         
         const extractedProfile: Partial<UserProfile> = {
-          name: data.full_name || currentGlobalProfile?.name || get().user?.full_name || 'User',
+          name: data.full_name || currentGlobalProfile?.name || get().user?.name || 'User',
           age: data.age,
           city: data.city,
           income: data.annual_income ? data.annual_income / 12 : undefined,
@@ -549,6 +552,11 @@ export const useAppStore = create<AppState>()(
       cardInvestments: {},
       setCardInvestment: (goalId, amount) => set((state) => ({ 
         cardInvestments: { ...state.cardInvestments, [goalId]: amount } 
+      })),
+
+      cardPayouts: {},
+      setCardPayout: (goalId, amount) => set((state) => ({
+        cardPayouts: { ...state.cardPayouts, [goalId]: amount }
       })),
 
       productCount: 0,

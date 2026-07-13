@@ -27,11 +27,17 @@ export default function WishGoalCard({
   isSimulating,
   updateGoalTargetAmount
 }: WishGoalCardProps) {
-  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setWhatIfParams = useAppStore(state => state.setWhatIfParams);
+  const globalWhatIfParams = useAppStore(state => state.whatIfParams);
 
-  // Use what-if target or default goal corpus
-  const targetCover = whatIfParams.goalTargetAmounts?.[goal.id] ?? goal.corpusNeeded
+  const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardPayout = useAppStore(state => state.setCardPayout);
+
+  const targetCover = globalWhatIfParams?.goalTargetAmounts?.[goal.id] ?? goal.corpusNeeded
   
+  // Independent Cover States
+  const [vitalCover, setVitalCover] = useState<number>(targetCover || 3000000)
+
   // UI States
   const [paymentTerm, setPaymentTerm] = useState<8 | 10 | 15>(10)
   const [maternityEnabled, setMaternityEnabled] = useState(false)
@@ -50,8 +56,8 @@ export default function WishGoalCard({
     10: 1099 // For 20 yr cov
   }
 
-  // Scale relative to 20L
-  const scale = Math.max(0.1, targetCover / 20_00_000)
+  // Scale relative to 20L (based on Vital Cover as primary driver)
+  const scale = Math.max(0.1, vitalCover / 20_00_000)
   
   // Calculate premium based on coverage term
   const calcPremium = (payTerm: 8|10|15, selectedCovTerm: number) => {
@@ -79,13 +85,12 @@ export default function WishGoalCard({
   // Maternity Cover Amount dynamically scaled
   const maternityCoverLakhs = ((5_00_000 * scale) / 100000).toFixed(2)
   
-  const maxPayout = targetCover + (targetCover / 2) + (maternityEnabled ? (5_00_000 * scale) : 0)
+  const maxPayout = vitalCover + (vitalCover / 2) + (maternityEnabled ? (5_00_000 * scale) : 0)
 
   useEffect(() => {
-    if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, totalInvested);
-    }
-  }, [totalInvested, result?.goalId || goal?.id, setCardInvestment]);
+    setCardInvestment(result?.goalId || goal?.id, totalInvested);
+    setCardPayout(result?.goalId || goal?.id, maxPayout);
+  }, [totalInvested, maxPayout, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
 
   return (
     <motion.div 
@@ -135,6 +140,43 @@ export default function WishGoalCard({
               </div>
             </div>
 
+            {/* Dynamic Coverage Banner */}
+            <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200 mb-4 flex justify-between items-center shadow-sm">
+               <div>
+                 <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-0.5">Coverage</p>
+                 <p className="text-sm font-display font-bold text-gray-900">₹{(maxPayout / 100000).toFixed(2)} Lakh</p>
+               </div>
+               <div className="text-right">
+                 <div className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm">
+                   {((globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0) > 0 ? Math.round((maxPayout / ((globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0)) * 100) : 0}% of Target
+                 </div>
+               </div>
+            </div>
+
+            {/* Corpus Needed Input */}
+            <div className="bg-orange-50/40 p-3 rounded-lg border border-orange-100 mb-5 flex justify-between items-center">
+              <label className="text-xs font-bold text-gray-700">Corpus Needed / Target Amount</label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 text-sm">₹</span>
+                <input 
+                  type="number" 
+                  value={(globalWhatIfParams?.goalTargetAmounts && globalWhatIfParams.goalTargetAmounts[result?.goalId || goal?.id]) || goal?.corpusNeeded || 0}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setWhatIfParams({
+                      ...globalWhatIfParams,
+                      goalTargetAmounts: {
+                        ...(globalWhatIfParams?.goalTargetAmounts || {}),
+                        [result?.goalId || goal?.id]: val
+                      }
+                    });
+                  }}
+                  className="bg-white border border-gray-300 rounded px-2 py-1 text-sm font-bold text-gray-800 w-32 outline-none"
+                />
+              </div>
+            </div>
+
+
             {/* Red Bordered Box (Vital + Surgical + Addon) */}
             <div className="border-2 border-red-800 rounded-xl overflow-hidden mb-6 relative bg-[#fdfaf5]">
               <div className="p-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-red-800/20">
@@ -146,13 +188,13 @@ export default function WishGoalCard({
                   </p>
                   
                   <div className="bg-white border border-gray-300 rounded-lg p-2 flex justify-between items-center relative">
-                     <span className="font-bold text-gray-900">₹{(targetCover / 100000).toFixed(2)} Lakh</span>
+                     <span className="font-bold text-gray-900">₹{(vitalCover / 100000).toFixed(2)} Lakh</span>
                      <span className="text-gray-400 text-sm">📝</span>
                      {/* Overlay select for interaction */}
                      <select 
-                      value={targetCover}
+                      value={vitalCover}
                       disabled={isSimulating}
-                      onChange={(e) => updateGoalTargetAmount(goal.id, Number(e.target.value))}
+                      onChange={(e) => setVitalCover(Number(e.target.value))}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     >
                       <option value={1000000}>10.00 Lakh</option>
@@ -162,7 +204,7 @@ export default function WishGoalCard({
                       <option value={5000000}>50.00 Lakh</option>
                     </select>
                   </div>
-                  <p className="text-[9px] text-gray-400 mt-1 italic">{(targetCover / 100000)} Lakh Only</p>
+                  <p className="text-[9px] text-gray-400 mt-1 italic">{(vitalCover / 100000)} Lakh Only</p>
                 </div>
                 
                 {/* Plus Icon */}
@@ -177,7 +219,7 @@ export default function WishGoalCard({
                     Covers surgical procedures <span className="text-brand-orange cursor-pointer hover:underline" onClick={() => setShowSurgicalModal(true)}>View List</span>
                   </p>
                   <div className="bg-gray-100 border border-gray-200 rounded-lg p-2 text-center">
-                     <span className="font-bold text-gray-900">₹{((targetCover / 2) / 100000).toFixed(2)} Lakh</span>
+                     <span className="font-bold text-gray-900">₹{((vitalCover / 2) / 100000).toFixed(2)} Lakh</span>
                   </div>
                 </div>
               </div>
