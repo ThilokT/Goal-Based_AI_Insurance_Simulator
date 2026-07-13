@@ -87,3 +87,5 @@ dist/
 helper/
 helper_info/
 backend/venv/
+venv/
+node_modules/

@@ -329,7 +329,7 @@ export const useAppStore = create<AppState>()(
           conversationId: null,
           messages: [],
           chatTurn: 0,
-          profile: { name: get().user?.name || 'User', goals: [] },
+          profile: { name: get().user?.full_name || 'User', goals: [] },
           goals: []
         })
       },
@@ -383,7 +383,7 @@ export const useAppStore = create<AppState>()(
         const currentGlobalProfile = get().profile
         
         const extractedProfile: Partial<UserProfile> = {
-          name: data.full_name || currentGlobalProfile?.name || get().user?.name || 'User',
+          name: data.full_name || currentGlobalProfile?.name || get().user?.full_name || 'User',
           age: data.age,
           city: data.city,
           income: data.annual_income ? data.annual_income / 12 : undefined,
