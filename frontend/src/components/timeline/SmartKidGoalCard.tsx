@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useAppStore } from '../../store'
 import { motion } from 'framer-motion'
 import { cn, formatCurrency } from '../../lib/utils'
-import type { SimulationResult, LifeGoal, UserProfile } from '../../types'
+import type { SimulationResult, LifeGoal, UserProfile, WhatIfParams } from '../../types'
 
 interface SmartKidGoalCardProps {
   result: SimulationResult
@@ -12,6 +12,7 @@ interface SmartKidGoalCardProps {
   isEven: boolean
   catColor: string
   isSimulating: boolean
+  whatIfParams: any
 }
 
 export default function SmartKidGoalCard({
@@ -22,12 +23,15 @@ export default function SmartKidGoalCard({
   isEven,
   catColor,
   isSimulating,
+  whatIfParams,
 }: SmartKidGoalCardProps) {
   const setWhatIfParams = useAppStore(state => state.setWhatIfParams);
   const globalWhatIfParams = useAppStore(state => state.whatIfParams);
 
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
   const setCardPayout = useAppStore(state => state.setCardPayout);
+  const setCardInvestmentSchedule = useAppStore(state => state.setCardInvestmentSchedule);
+  const setCardPayoutSchedule = useAppStore(state => state.setCardPayoutSchedule);
 
   // Local state for interactive UI mirroring the ICICI calculator
   // Initialized from AI recommendation
@@ -44,6 +48,19 @@ export default function SmartKidGoalCard({
   const [investmentFrequency, setInvestmentFrequency] = useState<'Yearly' | 'Half-Yearly' | 'Monthly'>('Yearly')
   const [payoutFrequency, setPayoutFrequency] = useState<'Equal Income' | 'Increasing Income'>('Increasing Income')
   const [selectedPayoutIdx, setSelectedPayoutIdx] = useState<number>(0) // Default to 1st payout
+
+  // Auto-adjust investment amount when frequency changes to preserve the annual total.
+  // Without this, switching from Yearly ₹60K to Monthly treats ₹60K as per-month (₹7.2L/yr).
+  const prevFrequencyRef = useRef(investmentFrequency)
+  useEffect(() => {
+    if (prevFrequencyRef.current !== investmentFrequency) {
+      const prevInstallments = prevFrequencyRef.current === 'Monthly' ? 12 : prevFrequencyRef.current === 'Half-Yearly' ? 2 : 1
+      const newInstallments = investmentFrequency === 'Monthly' ? 12 : investmentFrequency === 'Half-Yearly' ? 2 : 1
+      const annualTotal = annualInvestment * prevInstallments
+      setAnnualInvestment(Math.round(annualTotal / newInstallments))
+      prevFrequencyRef.current = investmentFrequency
+    }
+  }, [investmentFrequency])
   
   // What they actually pay over the year
   const installmentsPerYear = investmentFrequency === 'Monthly' ? 12 : investmentFrequency === 'Half-Yearly' ? 2 : 1;
@@ -51,7 +68,7 @@ export default function SmartKidGoalCard({
   const totalPaid = actualAnnualPaid * ppt;
 
   // The base premium used to calculate returns (penalized by modal loading)
-  const modalFactor = investmentFrequency === 'Monthly' ? 0.088 : investmentFrequency === 'Half-Yearly' ? 0.51 : 1.0;
+  const modalFactor = investmentFrequency === 'Monthly' ? (1 / 12) : investmentFrequency === 'Half-Yearly' ? 0.51 : 1.0;
   const baseAnnualPremiumForReturns = annualInvestment / modalFactor;
   const baseTotalPaid = baseAnnualPremiumForReturns * ppt;
   
@@ -106,6 +123,31 @@ export default function SmartKidGoalCard({
   
   // Find max payout to scale the bars (including maturity for scale calculation if needed, but bars are only for payouts)
   const maxPayout = Math.max(...payouts.map(p => p.amount))
+
+  useEffect(() => {
+    if (result?.goalId || goal?.id) {
+      const id = result?.goalId || goal?.id;
+      setCardInvestment(id, totalPaid);
+      setCardPayout(id, totalBenefit);
+      const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+      const schedule = [
+        { age: baseAge + policyTerm - 3, amount: payout1, label: 'SmartKid Payout 1' },
+        { age: baseAge + policyTerm - 2, amount: payout2, label: 'SmartKid Payout 2' },
+        { age: baseAge + policyTerm - 1, amount: payout3, label: 'SmartKid Payout 3' },
+        { age: baseAge + policyTerm, amount: payout4, label: 'SmartKid Payout 4' },
+      ];
+      if (maturityBenefit > 0) {
+        schedule.push({ age: baseAge + policyTerm, amount: maturityBenefit, label: 'SmartKid Maturity' });
+      }
+      setCardPayoutSchedule(id, schedule);
+      
+      const invSchedule = [];
+      for (let i = 0; i < ppt; i++) {
+        invSchedule.push({ age: baseAge + i, amount: actualAnnualPaid, label: `SmartKid Premium Yr ${i + 1}` });
+      }
+      setCardInvestmentSchedule(id, invSchedule);
+    }
+  }, [totalPaid, totalBenefit, policyTerm, payout1, payout2, payout3, payout4, maturityBenefit, profile?.age, whatIfParams?.goalStartAges, ppt, actualAnnualPaid, result?.goalId, goal?.id, setCardInvestment, setCardPayout, setCardPayoutSchedule, setCardInvestmentSchedule]);
 
   return (
     <motion.div 
@@ -339,13 +381,6 @@ export default function SmartKidGoalCard({
                   {payouts.map((payout, idx) => {
                     const heightPct = Math.max(15, (payout.amount / maxPayout) * 100)
                     const isSelected = selectedPayoutIdx === idx
-
-  useEffect(() => {
-    if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, totalPaid);
-      setCardPayout(result?.goalId || goal?.id, totalBenefit);
-    }
-  }, [totalPaid, totalBenefit, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
 
                     return (
                       <div key={idx} className="flex flex-col items-center gap-0 flex-1 group cursor-pointer h-full justify-end relative" onClick={() => setSelectedPayoutIdx(idx)}>

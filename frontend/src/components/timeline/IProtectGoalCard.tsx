@@ -12,6 +12,7 @@ interface IProtectGoalCardProps {
   isEven: boolean
   catColor: string
   isSimulating: boolean
+  whatIfParams: any // Using any here to quickly fix or import WhatIfParams
 }
 
 function AgeSelect({ value, onChange, options, disabled }: { value: number, onChange: (val: number) => void, options: number[], disabled: boolean }) {
@@ -130,9 +131,12 @@ export default function IProtectGoalCard({
   isEven,
   catColor,
   isSimulating,
+  whatIfParams
 }: IProtectGoalCardProps) {
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardInvestmentSchedule = useAppStore(state => state.setCardInvestmentSchedule);
   const setCardPayout = useAppStore(state => state.setCardPayout);
+  const setCardPayoutSchedule = useAppStore(state => state.setCardPayoutSchedule);
   // Local state for interactive UI mirroring the ICICI calculator
   const initialLifeCover = goal.corpusNeeded || 10000000
   
@@ -171,15 +175,17 @@ export default function IProtectGoalCard({
   
   const subTotalMonthly = baseMonthly + totalAddonsMonthly
 
+  const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+
   // Payment Term Multipliers
-  const regularYears = coverTillAge - profile.age
+  const regularYears = coverTillAge - baseAge
   const regularOutflow = subTotalMonthly * 12 * regularYears
 
   const paymentTermMultipliers = {
-    limited10: { mult: 2.35, label: 'Limited Pay', desc: `Pay till age ${profile.age + 10}`, subDesc: '(for 10 years)', years: 10, isRecommended: true },
+    limited10: { mult: 2.35, label: 'Limited Pay', desc: `Pay till age ${baseAge + 10}`, subDesc: '(for 10 years)', years: 10, isRecommended: true },
     regular: { mult: 1, label: 'Regular Pay', desc: `Pay till age ${coverTillAge}`, subDesc: `(for ${regularYears} years)`, years: regularYears, isRecommended: false },
-    limited39: { mult: 1.016, label: 'Limited Pay', desc: `Pay till age ${profile.age + 39}`, subDesc: '(for 39 years)', years: 39, isRecommended: false },
-    limited15: { mult: 1.88, label: 'Limited Pay', desc: `Pay till age ${profile.age + 15}`, subDesc: '(for 15 years)', years: 15, isRecommended: false }
+    limited39: { mult: 1.016, label: 'Limited Pay', desc: `Pay till age ${baseAge + 39}`, subDesc: '(for 39 years)', years: 39, isRecommended: false },
+    limited15: { mult: 1.88, label: 'Limited Pay', desc: `Pay till age ${baseAge + 15}`, subDesc: '(for 15 years)', years: 15, isRecommended: false }
   }
 
   const finalMonthly = subTotalMonthly * paymentTermMultipliers[paymentTerm].mult
@@ -187,10 +193,22 @@ export default function IProtectGoalCard({
   
   useEffect(() => {
     if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, totalInvested);
-      setCardPayout(result?.goalId || goal?.id, lifeCover);
+      const id = result?.goalId || goal?.id;
+      setCardInvestment(id, totalInvested);
+      const totalCover = lifeCover + ciCover + adcCover + atpdCover;
+      setCardPayout(id, totalCover);
+      setCardPayoutSchedule(id, [
+        { age: coverTillAge, amount: totalCover, label: 'iProtect Cover' }
+      ]);
+      const invSchedule = [];
+      const invYears = paymentTermMultipliers[paymentTerm].years;
+      const annualInvestment = finalMonthly * 12;
+      for (let i = 0; i < invYears; i++) {
+        invSchedule.push({ age: baseAge + i, amount: annualInvestment, label: `iProtect Premium Yr ${i + 1}` });
+      }
+      setCardInvestmentSchedule(id, invSchedule);
     }
-  }, [totalInvested, lifeCover, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
+  }, [totalInvested, lifeCover, ciCover, adcCover, atpdCover, coverTillAge, profile?.age, whatIfParams?.goalStartAges, paymentTerm, finalMonthly, result?.goalId, goal?.id, setCardInvestment, setCardPayout, setCardPayoutSchedule, setCardInvestmentSchedule]);
   const formatExactCurrency = (num: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(num)
   }
@@ -278,7 +296,7 @@ export default function IProtectGoalCard({
                   value={coverTillAge}
                   onChange={setCoverTillAge}
                   disabled={isSimulating}
-                  options={Array.from({ length: 99 - (profile.age + 5) + 1 }, (_, i) => (profile.age + 5) + i)}
+                  options={Array.from({ length: 99 - (baseAge + 5) + 1 }, (_, i) => (baseAge + 5) + i)}
                 />
               </div>
             </div>

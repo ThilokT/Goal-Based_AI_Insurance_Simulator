@@ -71,13 +71,17 @@ export default function ProtectNGainCard({
   whatIfParams,
   event,
   isEven,
-  catColor
+  catColor,
+  isSimulating,
+  updateGoalTargetAmount
 }: ProtectNGainCardProps) {
   const setWhatIfParams = useAppStore(state => state.setWhatIfParams);
   const globalWhatIfParams = useAppStore(state => state.whatIfParams);
 
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardInvestmentSchedule = useAppStore(state => state.setCardInvestmentSchedule);
   const setCardPayout = useAppStore(state => state.setCardPayout);
+  const setCardPayoutSchedule = useAppStore(state => state.setCardPayoutSchedule);
 
   
   // State
@@ -109,6 +113,12 @@ export default function ProtectNGainCard({
   if (paymentFrequency === 'Monthly') freqMultiplier = 0.97
   
   const investablePremium = baseInvestable * freqMultiplier;
+
+  // Gross premium (actual amount user pays) — investablePremium is net of ULIP charges.
+  // ULIP investable ratio ~76.5% (allocation + mortality charges deducted by ICICI).
+  const INVESTABLE_RATIO = 0.765;
+  const grossAnnualPremium = investablePremium / INVESTABLE_RATIO;
+  const totalPremiumPaid = grossAnnualPremium * payFor;
   
   // ULIP Compound Interest Engine
   const calculateReturn = (rate: number) => {
@@ -147,10 +157,22 @@ export default function ProtectNGainCard({
 
   useEffect(() => {
     if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, investablePremium * payFor);
-      setCardPayout(result?.goalId || goal?.id, assumedReturnAmount);
+      const id = result?.goalId || goal?.id;
+      setCardInvestment(id, totalPremiumPaid);
+      setCardPayout(id, assumedReturnAmount);
+      const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+      const maturityAge = baseAge + policyTerm;
+      setCardPayoutSchedule(id, [
+        { age: maturityAge, amount: assumedReturnAmount, label: 'Protect N Gain Maturity' }
+      ]);
+
+      const invSchedule = [];
+      for (let i = 0; i < payFor; i++) {
+        invSchedule.push({ age: baseAge + i, amount: grossAnnualPremium, label: `Protect N Gain Premium Yr ${i + 1}` });
+      }
+      setCardInvestmentSchedule(id, invSchedule);
     }
-  }, [investablePremium * payFor, assumedReturnAmount, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
+  }, [totalPremiumPaid, assumedReturnAmount, policyTerm, profile?.age, whatIfParams?.goalStartAges, payFor, grossAnnualPremium, result?.goalId, goal?.id, setCardInvestment, setCardPayout, setCardPayoutSchedule, setCardInvestmentSchedule]);
 
   return (
     <motion.div 
@@ -379,7 +401,7 @@ export default function ProtectNGainCard({
                 <p className="text-xs text-gray-600 font-medium">Over {payFor} years</p>
               </div>
               <div className="text-lg font-display font-bold text-gray-900">
-                {formatAmount(investablePremium * payFor)}
+                {formatAmount(totalPremiumPaid)}
               </div>
             </div>
 

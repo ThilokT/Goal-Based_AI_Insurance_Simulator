@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useRef, useCallback, useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Sliders, RefreshCw, TrendingUp, TrendingDown, WifiOff } from 'lucide-react'
 import { useAppStore } from '../../store'
@@ -37,8 +37,11 @@ function SliderRow({
 }
 
 export default function WhatIfPanel() {
-  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating, cardInvestments, cardPayouts } = useAppStore()
+  const { whatIfParams, setWhatIfParams, profile, goals, simulationResults, setSimulationResults, setYearlyProjections, chatContexts, conversationId, isOffline, setIsOffline, setIsSimulating, cardInvestments, cardPayouts, cardPayoutSchedules, cardInvestmentSchedules } = useAppStore()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [payoutAsOfAge, setPayoutAsOfAge] = useState<number>(85)
+  const [investmentAsOfAge, setInvestmentAsOfAge] = useState<number>(85)
 
   // Use chat context profile if available
   const activeChatContext = conversationId ? chatContexts[conversationId] : null
@@ -60,7 +63,8 @@ export default function WhatIfPanel() {
       goals: activeGoals.map(g => ({
         goal_type: g.label,
         target_amount: params.goalTargetAmounts?.[g.id] ?? g.corpusNeeded,
-        target_year: params.goalTargetAges?.[g.id] ?? g.targetAge,
+        target_year: g.targetAge,
+        start_age: params.goalStartAges?.[g.id] ?? activeProfile.age,
         priority: 1,
         existing_savings: params.goalExistingSavings?.[g.id] || 0,
         risk_override: params.goalRiskAppetites?.[g.id],
@@ -103,6 +107,36 @@ export default function WhatIfPanel() {
     }
   }, [activeProfile, activeGoals, setSimulationResults, setIsOffline, setIsSimulating])
 
+  const cumulativePayoutByAge = useMemo(() => {
+    let total = 0;
+    activeGoals.forEach(g => {
+      const events = cardPayoutSchedules?.[g.id];
+      if (Array.isArray(events)) {
+        events.forEach(event => {
+          if (event && event.age <= payoutAsOfAge) {
+            total += (event.amount || 0);
+          }
+        });
+      }
+    });
+    return total;
+  }, [cardPayoutSchedules, payoutAsOfAge, activeGoals]);
+
+  const cumulativeInvestmentByAge = useMemo(() => {
+    let total = 0;
+    activeGoals.forEach(g => {
+      const events = cardInvestmentSchedules?.[g.id];
+      if (Array.isArray(events)) {
+        events.forEach(event => {
+          if (event && event.age <= investmentAsOfAge) {
+            total += (event.amount || 0);
+          }
+        });
+      }
+    });
+    return total;
+  }, [cardInvestmentSchedules, investmentAsOfAge, activeGoals]);
+
   function update(key: keyof typeof whatIfParams, value: number | boolean | Record<string, number>) {
     const next = { ...whatIfParams, [key]: value } as typeof whatIfParams
     setWhatIfParams({ [key]: value })
@@ -121,9 +155,9 @@ export default function WhatIfPanel() {
     }, 500)
   }
 
-  function updateGoalAge(goalId: string, age: number) {
-    const nextAges = { ...(whatIfParams.goalTargetAges || {}), [goalId]: age }
-    update('goalTargetAges', nextAges)
+  function updateGoalStartAge(goalId: string, age: number) {
+    const nextAges = { ...(whatIfParams.goalStartAges || {}), [goalId]: age }
+    update('goalStartAges', nextAges)
   }
 
   function reset() {
@@ -175,59 +209,97 @@ export default function WhatIfPanel() {
 
           <div className="space-y-5">
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium text-gray-600">Existing savings</label>
-                <span className="text-xs font-bold text-brand-navy">{formatCurrency(whatIfParams.existingSavings)}</span>
-              </div>
-              <input
-                type="range"
-                min={0} max={5_000_000} step={50000}
-                value={whatIfParams.existingSavings}
-                onChange={e => update('existingSavings', +e.target.value)}
-                className="w-full accent-brand-orange h-1.5"
-              />
-              <div className="flex justify-between mt-0.5">
-                <span className="text-[10px] text-gray-400">₹0</span>
-                <span className="text-[10px] text-gray-400">₹50L</span>
-              </div>
-            </div>
 
-            <div className="bg-orange-50/50 p-3 rounded-lg border border-orange-100 flex items-center justify-between">
+
+            <div className="bg-orange-50/50 p-3 rounded-lg border border-orange-100 flex items-center justify-between mb-2">
               <label className="text-xs font-medium text-gray-700">Total Invested</label>
               <span className="text-sm font-bold text-[#b73238]">
                 {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
-                  Object.values(cardInvestments || {}).reduce((a, b) => a + (Number(b) || 0), 0)
+                  activeGoals.reduce((sum, g) => sum + (Number(cardInvestments?.[g.id]) || 0), 0)
                 )}
               </span>
+            </div>
+
+            {/* ── Investment as of Age ── */}
+            <div className="bg-orange-50/50 p-3 rounded-lg border border-orange-100 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-gray-700">Investment as of Age</label>
+                <span className="text-xs font-bold text-brand-navy">{investmentAsOfAge} yrs</span>
+              </div>
+              <input
+                type="range"
+                min={activeProfile?.age || 18}
+                max={85}
+                step={1}
+                value={investmentAsOfAge}
+                onChange={e => setInvestmentAsOfAge(+e.target.value)}
+                className="w-full accent-[#b73238] h-1.5"
+              />
+              <div className="flex justify-between mt-0.5">
+                <span className="text-[10px] text-gray-400">{activeProfile?.age || 18} yrs</span>
+                <span className="text-[10px] text-gray-400">85 yrs</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[10px] font-medium text-gray-500">Total Invested by Age {investmentAsOfAge}</span>
+                <span className="text-sm font-bold text-[#b73238]">
+                  {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(cumulativeInvestmentByAge)}
+                </span>
+              </div>
             </div>
 
             <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100 flex items-center justify-between">
               <label className="text-xs font-medium text-gray-700">Total Payout</label>
               <span className="text-sm font-bold text-emerald-700">
                 {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
-                  Object.values(cardPayouts || {}).reduce((a, b) => a + (Number(b) || 0), 0)
+                  activeGoals.reduce((sum, g) => sum + (Number(cardPayouts?.[g.id]) || 0), 0)
                 )}
               </span>
+            </div>
+
+            {/* ── Payout as of Age ── */}
+            <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium text-gray-700">Payout as of Age</label>
+                <span className="text-xs font-bold text-brand-navy">{payoutAsOfAge} yrs</span>
+              </div>
+              <input
+                type="range"
+                min={activeProfile?.age || 18}
+                max={85}
+                step={1}
+                value={payoutAsOfAge}
+                onChange={e => setPayoutAsOfAge(+e.target.value)}
+                className="w-full accent-blue-500 h-1.5"
+              />
+              <div className="flex justify-between mt-0.5">
+                <span className="text-[10px] text-gray-400">{activeProfile?.age || 18} yrs</span>
+                <span className="text-[10px] text-gray-400">85 yrs</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[10px] font-medium text-gray-500">Total Payout by Age {payoutAsOfAge}</span>
+                <span className="text-sm font-bold text-blue-700">
+                  {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(cumulativePayoutByAge)}
+                </span>
+              </div>
             </div>
 
 
             {activeGoals.length > 0 && (
               <div className="pt-4 border-t border-gray-100">
-                <h4 className="text-xs font-semibold text-gray-900 mb-3">Goal Target Ages</h4>
+                <h4 className="text-xs font-semibold text-gray-900 mb-3">Investment Start Ages</h4>
                 <div className="space-y-4">
                   {activeGoals.map(g => {
-                    const currentTarget = whatIfParams.goalTargetAges?.[g.id] ?? g.targetAge
+                    const currentStart = whatIfParams.goalStartAges?.[g.id] ?? (activeProfile?.age || 18)
                     return (
-                      <SliderRow
-                        key={g.id}
-                        label={g.label}
-                        value={currentTarget}
-                        min={(activeProfile?.age || 18) + 1}
-                        max={85}
-                        unit=" yrs"
-                        onChange={v => updateGoalAge(g.id, v)}
-                      />
+                        <SliderRow
+                          key={g.id}
+                          label={g.label}
+                          value={currentStart}
+                          min={activeProfile?.age || 18}
+                          max={Math.max(55, activeProfile?.age || 18)}
+                          unit=" yrs"
+                          onChange={v => updateGoalStartAge(g.id, v)}
+                        />
                     )
                   })}
                 </div>

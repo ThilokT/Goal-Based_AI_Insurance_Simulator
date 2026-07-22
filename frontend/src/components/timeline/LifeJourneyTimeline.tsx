@@ -68,22 +68,7 @@ const GoalTargetSlider = ({ goal, currentAmount, isEven }: { goal: any, currentA
 }
 
 
-function Legend() {
-  return (
-    <div className="flex flex-wrap gap-4 mb-6">
-      {Object.entries(CATEGORY_META).map(([cat, meta]) => (
-        <div key={cat} className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full" style={{ background: CATEGORY_COLORS[cat] }} />
-          <span className="text-xs text-gray-500">{meta.label}</span>
-        </div>
-      ))}
-      <div className="flex items-center gap-1.5">
-        <div className="w-3 h-3 rounded-full bg-gray-200" />
-        <span className="text-xs text-gray-500">Coverage gap</span>
-      </div>
-    </div>
-  )
-}
+
 
 export default function LifeJourneyTimeline() {
   const { 
@@ -149,7 +134,8 @@ export default function LifeJourneyTimeline() {
             goals: goals.map(g => ({
               goal_type: g.label,
               target_amount: whatIfParams.goalTargetAmounts?.[g.id] ?? g.corpusNeeded,
-              target_year: whatIfParams.goalTargetAges?.[g.id] ?? g.targetAge,
+              target_year: g.targetAge,
+              start_age: whatIfParams.goalStartAges?.[g.id] ?? profile!.age,
               priority: 1,
               existing_savings: whatIfParams.goalExistingSavings?.[g.id] || 0,
               risk_override: whatIfParams.goalRiskAppetites?.[g.id],
@@ -201,7 +187,7 @@ export default function LifeJourneyTimeline() {
   // Build sorted timeline events
   const events = simulationResults.map(result => {
     const goal = goals.find(g => g.id === result.goalId)
-    const effectiveAge = goal ? (whatIfParams.goalTargetAges?.[goal.id] ?? goal.targetAge) : (currentAge + 10)
+    const effectiveAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? currentAge
     return {
       result,
       goal,
@@ -267,28 +253,9 @@ export default function LifeJourneyTimeline() {
                 </div>
                 <div className="badge-orange text-xs shadow-sm">Live simulation</div>
               </div>
-              <Legend />
 
-              <div className="bg-brand-cream/30 p-4 rounded-xl border border-brand-orange/10 mb-8 mt-6">
-                <h4 className="font-display font-bold text-brand-navy text-sm mb-2 flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-brand-orange/10 flex items-center justify-center text-brand-orange">💡</span>
-                  How to read this simulation
-                </h4>
-                <ul className="text-xs text-gray-600 space-y-2">
-                  <li className="flex items-start gap-2">
-                    <span className="text-brand-orange font-bold mt-0.5">•</span> 
-                    <span><strong>Visual Dots:</strong> Each colored dot on the center line represents a life goal. The color tells you the primary recommended product category for that goal (e.g., Orange for Protection, Blue for ULIP).</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-brand-orange font-bold mt-0.5">•</span> 
-                    <span><strong>Goal Cards:</strong> Shows the total corpus needed at that age, and how much is projected to be covered by the AI's recommended products.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-brand-orange font-bold mt-0.5">•</span> 
-                    <span><strong>Coverage Bar:</strong> A quick visual indicator. If the bar is green, you are well covered (80%+). If it's orange, there is a gap you should review.</span>
-                  </li>
-                </ul>
-              </div>
+
+
 
               <div className={cn(
                 "relative py-8 px-4 sm:px-12 mt-4 bg-gray-50/50 rounded-2xl border border-gray-100 transition-all duration-300",
@@ -324,7 +291,8 @@ export default function LifeJourneyTimeline() {
                     
                     // Keep the annual premium constant based on the default 7-year assumption
                     const baseAnnualPremium = (result?.coveredAmount || 0) / 7
-                    const yearsToRetirement = Math.max(1, (goal?.targetAge || 60) - (profile?.age || 30))
+                    const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+                    const yearsToRetirement = Math.max(1, (goal?.targetAge || 60) - baseAge)
                     
                     // Calculate true future value based on selected PPT compounding at 6.5% (ICICI Annuity Yield)
                     const r = 0.065
@@ -368,6 +336,7 @@ export default function LifeJourneyTimeline() {
                           isEven={isEven}
                           catColor={catColor}
                           isSimulating={isSimulating}
+                          whatIfParams={whatIfParams}
                         />
                       )
                     }
@@ -383,6 +352,7 @@ export default function LifeJourneyTimeline() {
                           isEven={isEven}
                           catColor={catColor}
                           isSimulating={isSimulating}
+                          whatIfParams={whatIfParams}
                         />
                       )
                     }
@@ -454,6 +424,7 @@ export default function LifeJourneyTimeline() {
                           isEven={isEven}
                           catColor={catColor}
                           isSimulating={isSimulating}
+                          whatIfParams={whatIfParams}
                         />
                       )
                     }

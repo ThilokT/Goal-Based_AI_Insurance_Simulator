@@ -72,9 +72,21 @@ export interface WhatIfParams {
   inflationRate: number
   existingSavings: number
   annualIncrementPercent: number
-  goalTargetAges?: Record<string, number>
+  goalStartAges?: Record<string, number>
   goalTargetAmounts?: Record<string, number>
   goalExistingSavings?: Record<string, number>
   enableSip: boolean
   goalRiskAppetites?: Record<string, 'conservative' | 'moderate' | 'aggressive'>
+}
+
+export interface PayoutEvent {
+  age: number
+  amount: number
+  label: string
+}
+
+export interface InvestmentEvent {
+  age: number
+  amount: number
+  label: string
 }

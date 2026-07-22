@@ -32,12 +32,12 @@ export default function TermGoalCard({
   
   // Quick Proxy Formula for realistic Term Insurance premiums
   // Rule of thumb: ~₹20/month per ₹1 Lakh of cover for a healthy ~30 year old
-  const age = profile.age || 30
-  const ageMultiplier = Math.max(1, 1 + ((age - 30) * 0.05)) // +5% cost per year over 30
+  const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+  const ageMultiplier = Math.max(1, 1 + ((baseAge - 30) * 0.05)) // +5% cost per year over 30
   const proxyMonthlyPremium = (targetCover / 100_000) * 20 * ageMultiplier
 
-  const targetAge = whatIfParams.goalTargetAges?.[goal.id] ?? goal.targetAge
-  const yearsToGoal = Math.max(1, targetAge - (profile.age || 30))
+  const targetAge = goal.targetAge
+  const yearsToGoal = Math.max(1, targetAge - baseAge)
 
   return (
     <motion.div 

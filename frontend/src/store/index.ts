@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { AuthUser, ConversationResponse, ConversationDetailResponse } from '../types/api'
 import type { BackendGoalListResponse, GoalRequest } from '../types/api'
-import type { UserProfile, Message, WhatIfParams, SimulationResult, LifeGoal, YearlyProjection } from '../types'
+import type { UserProfile, Message, WhatIfParams, SimulationResult, LifeGoal, YearlyProjection, PayoutEvent } from '../types'
 import { api } from '../lib/apiClient'
 
 // ─── Goal type mapper (backend → frontend) ───────────────────
@@ -116,8 +116,14 @@ interface AppState {
   cardInvestments: Record<string, number>
   setCardInvestment: (goalId: string, amount: number) => void
 
+  cardInvestmentSchedules: Record<string, import('../types').InvestmentEvent[]>
+  setCardInvestmentSchedule: (goalId: string, schedule: import('../types').InvestmentEvent[]) => void
+
   cardPayouts: Record<string, number>
   setCardPayout: (goalId: string, amount: number) => void
+
+  cardPayoutSchedules: Record<string, PayoutEvent[]>
+  setCardPayoutSchedule: (goalId: string, events: PayoutEvent[]) => void
 
   // Products (cached count from API)
   productCount: number
@@ -154,6 +160,9 @@ export const useAppStore = create<AppState>()(
         goals: [],
         activeTab: 'dashboard',
         cardInvestments: {},
+        cardInvestmentSchedules: {},
+        cardPayouts: {},
+        cardPayoutSchedules: {},
       }),
 
       isProfileLoading: true,
@@ -510,6 +519,21 @@ export const useAppStore = create<AppState>()(
       deleteGoal: async (id: string) => {
         try {
           await api.delete(`/api/goals/${id}`)
+          // Clean up stale card values for the deleted goal
+          set((state) => {
+            const { [id]: _inv, ...remainingInvestments } = state.cardInvestments || {}
+            const { [id]: _invSched, ...remainingInvSchedules } = state.cardInvestmentSchedules || {}
+            const { [id]: _pay, ...remainingPayouts } = state.cardPayouts || {}
+            const { [id]: _sched, ...remainingSchedules } = state.cardPayoutSchedules || {}
+            return {
+              goals: state.goals.filter(g => g.id !== id),
+              simulationResults: state.simulationResults.filter(r => r.goalId !== id),
+              cardInvestments: remainingInvestments,
+              cardInvestmentSchedules: remainingInvSchedules,
+              cardPayouts: remainingPayouts,
+              cardPayoutSchedules: remainingSchedules
+            }
+          })
           await get().loadGoals()
         } catch {
           console.warn('Failed to delete goal via API')
@@ -526,7 +550,7 @@ export const useAppStore = create<AppState>()(
         inflationRate: 6,
         existingSavings: 500000,
         annualIncrementPercent: 8,
-        goalTargetAges: {},
+        goalStartAges: {},
         goalTargetAmounts: {},
         goalExistingSavings: {},
         enableSip: true,
@@ -554,9 +578,19 @@ export const useAppStore = create<AppState>()(
         cardInvestments: { ...state.cardInvestments, [goalId]: amount } 
       })),
 
+      cardInvestmentSchedules: {},
+      setCardInvestmentSchedule: (goalId, schedule) => set(state => ({
+        cardInvestmentSchedules: { ...state.cardInvestmentSchedules, [goalId]: schedule }
+      })),
+
       cardPayouts: {},
       setCardPayout: (goalId, amount) => set((state) => ({
         cardPayouts: { ...state.cardPayouts, [goalId]: amount }
+      })),
+
+      cardPayoutSchedules: {},
+      setCardPayoutSchedule: (goalId, events) => set((state) => ({
+        cardPayoutSchedules: { ...state.cardPayoutSchedules, [goalId]: events }
       })),
 
       productCount: 0,

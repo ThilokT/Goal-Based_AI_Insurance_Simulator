@@ -116,9 +116,7 @@ export function runSimulation(
   const existingSavingsPerGoal = (params.existingSavings || 0) / Math.max(goals.length, 1)
 
   const simGoals = goals.map(goal => {
-    const overrideAge = params.goalTargetAges?.[goal.id]
-    const targetAge = overrideAge !== undefined ? overrideAge : goal.targetAge
-    const yearsToGoal = Math.max(targetAge - (profile.age || 30), 1)
+    const yearsToGoal = Math.max(goal.targetAge - (profile.age || 30), 1)
     const risk = profile.riskAppetite || 'moderate'
     const blendedReturn = getBlendedReturn(risk, yearsToGoal, goal.id)
 

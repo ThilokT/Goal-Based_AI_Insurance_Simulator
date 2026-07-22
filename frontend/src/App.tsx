@@ -11,6 +11,7 @@ import OnboardingFlow from './components/onboarding/OnboardingFlow'
 import ProductsPage from './components/products/ProductsPage'
 import LifeJourneyTimeline from './components/timeline/LifeJourneyTimeline'
 import WhatIfPanel from './components/simulation/WhatIfPanel'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import ScenarioComparison from './components/products/ScenarioComparison'
 import LandingPage from './components/landing/LandingPage'
 
@@ -65,13 +66,15 @@ export default function App() {
   if (!user) return <AuthPage />
 
   return (
-    <Layout>
-      <div className="mb-4">
-        <h2 className="text-lg font-display font-bold text-gray-900">
-          {PAGE_TITLES[activeTab] ?? 'LifeMap'}
-        </h2>
-      </div>
-      <AppContent />
-    </Layout>
+    <ErrorBoundary>
+      <Layout>
+        <div className="mb-4">
+          <h2 className="text-lg font-display font-bold text-gray-900">
+            {PAGE_TITLES[activeTab] ?? 'LifeMap'}
+          </h2>
+        </div>
+        <AppContent />
+      </Layout>
+    </ErrorBoundary>
   )
 }

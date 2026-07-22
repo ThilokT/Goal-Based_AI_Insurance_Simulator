@@ -66,15 +66,20 @@ function CustomSelect({ value, onChange, options, formatOption }: { value: any, 
 export default function UlipGoalCard({
   result,
   goal,
+  profile,
   event,
   isEven,
-  catColor
+  catColor,
+  isSimulating,
+  whatIfParams
 }: UlipGoalCardProps) {
   const setWhatIfParams = useAppStore(state => state.setWhatIfParams);
   const globalWhatIfParams = useAppStore(state => state.whatIfParams);
 
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardInvestmentSchedule = useAppStore(state => state.setCardInvestmentSchedule);
   const setCardPayout = useAppStore(state => state.setCardPayout);
+  const setCardPayoutSchedule = useAppStore(state => state.setCardPayoutSchedule);
 
   
   // State
@@ -148,10 +153,21 @@ export default function UlipGoalCard({
 
   useEffect(() => {
     if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, totalPremium);
-      setCardPayout(result?.goalId || goal?.id, assumedReturnAmount);
+      const id = result?.goalId || goal?.id;
+      setCardInvestment(id, totalPremium);
+      setCardPayout(id, assumedReturnAmount);
+      const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+      const maturityAge = baseAge + policyTerm;
+      setCardPayoutSchedule(id, [
+        { age: maturityAge, amount: assumedReturnAmount, label: 'ULIP Maturity' }
+      ]);
+      const invSchedule = [];
+      for (let i = 0; i < duration; i++) {
+        invSchedule.push({ age: baseAge + i, amount: annualPremium, label: `ULIP Premium Yr ${i + 1}` });
+      }
+      setCardInvestmentSchedule(id, invSchedule);
     }
-  }, [totalPremium, assumedReturnAmount, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
+  }, [totalPremium, assumedReturnAmount, policyTerm, profile?.age, whatIfParams?.goalStartAges, duration, annualPremium, result?.goalId, goal?.id, setCardInvestment, setCardPayout, setCardPayoutSchedule, setCardInvestmentSchedule]);
 
   return (
     <motion.div 

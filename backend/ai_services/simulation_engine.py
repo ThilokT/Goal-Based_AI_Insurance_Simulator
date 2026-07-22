@@ -498,6 +498,10 @@ class SimulationEngine:
             target_year = provided_target
 
         years_remaining = max(1, target_year - current_year)
+        
+        investment_start_age = getattr(goal, 'start_age', None) or user_age
+        investment_start_year = current_year + (investment_start_age - user_age)
+        investment_horizon = max(1, target_year - investment_start_year)
 
         # Use inflation override if provided (from what-if slider)
         inflation = inflation_override if inflation_override is not None else self.inflation_rate
@@ -522,23 +526,23 @@ class SimulationEngine:
         # 1. Existing savings (lump sum compounding)
         lump_sum_fv = self.future_value(existing_savings, adjusted_return, years_remaining) if existing_savings > 0 else 0.0
 
-        # 2. Current monthly SIP (flat or stepped)
+        # 2. Current monthly SIP (flat or stepped) over investment horizon
         monthly_savings = (current_savings or goal.monthly_contribution or 0.0) if enable_sip else 0.0
         if annual_increment > 0 and monthly_savings > 0:
             sip_fv = self.stepped_sip_future_value(
-                monthly_savings, adjusted_return, annual_increment, years_remaining
+                monthly_savings, adjusted_return, annual_increment, investment_horizon
             )
         else:
             sip_fv = self.sip_future_value(
-                monthly_savings, adjusted_return, years_remaining
+                monthly_savings, adjusted_return, investment_horizon
             )
 
-        # 3. Wealth Booster (only for ULIP-eligible goals)
+        # 3. Wealth Booster (only for ULIP-eligible goals) over investment horizon
         booster_fv = 0.0
-        if normalized_type in ULIP_ELIGIBLE_GOALS and years_remaining >= WEALTH_BOOSTER_START_YEAR:
+        if normalized_type in ULIP_ELIGIBLE_GOALS and investment_horizon >= WEALTH_BOOSTER_START_YEAR:
             annual_sip = monthly_savings * 12
             booster_fv = self.wealth_booster_value(
-                annual_sip, adjusted_return, years_remaining
+                annual_sip, adjusted_return, investment_horizon
             )
 
         projected_corpus = lump_sum_fv + sip_fv + booster_fv
@@ -547,9 +551,9 @@ class SimulationEngine:
         gap = max(0.0, future_target - projected_corpus)
         coverage_ratio = min(1.0, projected_corpus / future_target if future_target > 0 else 0.0)
 
-        # Monthly SIP required to close the gap (not the entire target)
+        # Monthly SIP required to close the gap (not the entire target) over investment horizon
         if enable_sip and gap > 0:
-            monthly_required = self.monthly_sip_required(gap, adjusted_return, years_remaining)
+            monthly_required = self.monthly_sip_required(gap, adjusted_return, investment_horizon)
         else:
             monthly_required = 0.0
 

@@ -31,7 +31,9 @@ export default function GiftProGoalCard({
   const globalWhatIfParams = useAppStore(state => state.whatIfParams);
 
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardInvestmentSchedule = useAppStore(state => state.setCardInvestmentSchedule);
   const setCardPayout = useAppStore(state => state.setCardPayout);
+  const setCardPayoutSchedule = useAppStore(state => state.setCardPayoutSchedule);
 
   
   // Base Investment Input
@@ -134,10 +136,32 @@ export default function GiftProGoalCard({
 
   useEffect(() => {
     if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, totalInvestment);
-      setCardPayout(result?.goalId || goal?.id, overallReturns);
+      const id = result?.goalId || goal?.id;
+      setCardInvestment(id, totalInvestment);
+      setCardPayout(id, overallReturns);
+      // Build payout schedule: yearly income events + moneyback
+      const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+      const schedule: { age: number, amount: number, label: string }[] = [];
+      for (let i = 0; i < getIncomeForYears; i++) {
+        const incomeAge = baseAge + incomeStartsFrom + i;
+        let incomeForYear = yearlyIncome;
+        if (isIncreasing) {
+          incomeForYear = yearlyIncome * (1 + i * 0.05);
+        }
+        schedule.push({ age: incomeAge, amount: incomeForYear, label: `GIFT Pro Income Yr ${i + 1}` });
+      }
+      if (moneyBack > 0) {
+        schedule.push({ age: baseAge + validMoneyBackYear, amount: moneyBack, label: 'GIFT Pro Money Back' });
+      }
+      setCardPayoutSchedule(id, schedule);
+      
+      const invSchedule = [];
+      for (let i = 0; i < payForYears; i++) {
+        invSchedule.push({ age: baseAge + i, amount: investment, label: `GIFT Pro Premium Yr ${i + 1}` });
+      }
+      setCardInvestmentSchedule(id, invSchedule);
     }
-  }, [totalInvestment, overallReturns, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
+  }, [totalInvestment, overallReturns, yearlyIncome, isIncreasing, getIncomeForYears, incomeStartsFrom, moneyBack, validMoneyBackYear, profile?.age, whatIfParams?.goalStartAges, payForYears, investment, result?.goalId, goal?.id, setCardInvestment, setCardPayout, setCardPayoutSchedule, setCardInvestmentSchedule]);
 
   return (
     <motion.div 

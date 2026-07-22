@@ -31,7 +31,9 @@ export default function WishGoalCard({
   const globalWhatIfParams = useAppStore(state => state.whatIfParams);
 
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardInvestmentSchedule = useAppStore(state => state.setCardInvestmentSchedule);
   const setCardPayout = useAppStore(state => state.setCardPayout);
+  const setCardPayoutSchedule = useAppStore(state => state.setCardPayoutSchedule);
 
   const targetCover = globalWhatIfParams?.goalTargetAmounts?.[goal.id] ?? goal.corpusNeeded
   
@@ -85,12 +87,27 @@ export default function WishGoalCard({
   // Maternity Cover Amount dynamically scaled
   const maternityCoverLakhs = ((5_00_000 * scale) / 100000).toFixed(2)
   
+  // Max payout calculation (Note: CI rider payout is assumed to be 50% of vitalCover)
   const maxPayout = vitalCover + (vitalCover / 2) + (maternityEnabled ? (5_00_000 * scale) : 0)
 
   useEffect(() => {
-    setCardInvestment(result?.goalId || goal?.id, totalInvested);
-    setCardPayout(result?.goalId || goal?.id, maxPayout);
-  }, [totalInvested, maxPayout, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
+    if (result?.goalId || goal?.id) {
+      const id = result?.goalId || goal?.id;
+      setCardInvestment(id, totalInvested);
+      setCardPayout(id, maxPayout);
+      const effectiveAge = event?.age || goal?.targetAge || ((goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30);
+      setCardPayoutSchedule(id, [
+        { age: effectiveAge, amount: maxPayout, label: 'Health Cover' }
+      ]);
+      const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+      const invSchedule = [];
+      const annualInvestment = finalPremium * 12;
+      for (let i = 0; i < paymentTerm; i++) {
+        invSchedule.push({ age: baseAge + i, amount: annualInvestment, label: `ICICI Lombard Health Premium Yr ${i + 1}` });
+      }
+      setCardInvestmentSchedule(id, invSchedule);
+    }
+  }, [totalInvested, maxPayout, event?.age, goal?.targetAge, profile?.age, whatIfParams?.goalStartAges, paymentTerm, finalPremium, result?.goalId, goal?.id, setCardInvestment, setCardPayout, setCardPayoutSchedule, setCardInvestmentSchedule]);
 
   return (
     <motion.div 

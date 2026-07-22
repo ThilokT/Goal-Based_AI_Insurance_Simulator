@@ -55,6 +55,7 @@ def run_simulation(request_data: dict) -> dict:
             goal_type=g["goal_type"],
             target_amount=g["target_amount"],
             target_year=g["target_year"],
+            start_age=g.get("start_age"),
             priority=g.get("priority", 1),
             monthly_contribution=g.get("monthly_contribution"),
             existing_savings=g.get("existing_savings"),

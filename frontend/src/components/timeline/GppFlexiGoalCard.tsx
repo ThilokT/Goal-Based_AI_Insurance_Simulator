@@ -12,6 +12,7 @@ interface GppFlexiGoalCardProps {
   isEven: boolean
   catColor: string
   isSimulating: boolean
+  whatIfParams: any
 }
 
 export default function GppFlexiGoalCard({
@@ -22,12 +23,15 @@ export default function GppFlexiGoalCard({
   isEven,
   catColor,
   isSimulating,
+  whatIfParams,
 }: GppFlexiGoalCardProps) {
   const setWhatIfParams = useAppStore(state => state.setWhatIfParams);
   const globalWhatIfParams = useAppStore(state => state.whatIfParams);
 
   const setCardInvestment = useAppStore(state => state.setCardInvestment);
+  const setCardInvestmentSchedule = useAppStore(state => state.setCardInvestmentSchedule);
   const setCardPayout = useAppStore(state => state.setCardPayout);
+  const setCardPayoutSchedule = useAppStore(state => state.setCardPayoutSchedule);
 
   // Local state for interactive UI mirroring the ICICI calculator
   const initialAnnualPremium = (result.monthlyPremium || 25000) * 12
@@ -44,10 +48,12 @@ export default function GppFlexiGoalCard({
   
   // Annuity Rate Calculation exactly mimicking screenshot for 15 yr deferment:
   // With ROP -> 14.37%, Without ROP -> 14.00%
-  const annuityRateWithRop = 0.0611785 + (deferment * 0.0055)
+  // Capped at 20% for extreme deferment ranges
+  const calculateRate = (base: number) => Math.min(0.20, base + (deferment * 0.0055))
+  const annuityRateWithRop = calculateRate(0.0611785)
   const annuityAmountWithRop = totalPaid * annuityRateWithRop
   
-  const annuityRateWithoutRop = 0.0575238 + (deferment * 0.0055)
+  const annuityRateWithoutRop = calculateRate(0.0575238)
   const annuityAmountWithoutRop = totalPaid * annuityRateWithoutRop
   
   // Tax Savings Calculation:
@@ -57,14 +63,14 @@ export default function GppFlexiGoalCard({
   const yearlyTaxSavings = Math.min(investmentAmount, 150000) * 0.312
   const totalTaxSavings = yearlyTaxSavings * ppt
   
+  const baseAge = (goal?.id && whatIfParams?.goalStartAges?.[goal.id]) ?? profile?.age ?? 30;
+
   // Life Expectancy Calculation
   const assumedLifeExpectancy = 85
-  const currentAge = profile.age + event.age - goal.targetAge! + (goal.targetAge! - profile.age) // wait, event.age is the age at which it starts.
-  // Actually, child's age or current age? The screenshot says "41 years | Male". 
   // Payout starts after deferment.
-  const payoutStartAge = profile.age + deferment
-  const payoutYears = Math.max(0, assumedLifeExpectancy - payoutStartAge)
-  const totalPensionWithRop = annuityAmountWithRop * payoutYears
+  const payoutStartAge = baseAge + deferment
+  const payoutYears = Math.max(0, assumedLifeExpectancy - payoutStartAge + 1)
+  const totalPensionWithRop = (annuityAmountWithRop * payoutYears) + totalPaid
   const totalPensionWithoutRop = annuityAmountWithoutRop * payoutYears
 
   const formatExactRupee = (amount: number) => {
@@ -81,10 +87,27 @@ export default function GppFlexiGoalCard({
 
   useEffect(() => {
     if (result?.goalId || goal?.id) {
-      setCardInvestment(result?.goalId || goal?.id, totalPaid);
-      setCardPayout(result?.goalId || goal?.id, withRop ? totalPensionWithRop : totalPensionWithoutRop);
+      const id = result?.goalId || goal?.id;
+      setCardInvestment(id, totalPaid);
+      const activeAnnuity = withRop ? annuityAmountWithRop : annuityAmountWithoutRop;
+      setCardPayout(id, withRop ? totalPensionWithRop : totalPensionWithoutRop);
+      // Build yearly annuity schedule from payoutStartAge through 85
+      const schedule: { age: number, amount: number, label: string }[] = [];
+      for (let age = payoutStartAge; age <= 85; age++) {
+        schedule.push({ age, amount: activeAnnuity, label: `GPP Flexi Pension Yr ${age - payoutStartAge + 1}` });
+      }
+      if (withRop) {
+        schedule.push({ age: 85, amount: totalPaid, label: 'GPP Flexi Return of Premium' });
+      }
+      setCardPayoutSchedule(id, schedule);
+      
+      const invSchedule = [];
+      for (let i = 0; i < ppt; i++) {
+        invSchedule.push({ age: baseAge + i, amount: investmentAmount, label: `GPP Flexi Premium Yr ${i + 1}` });
+      }
+      setCardInvestmentSchedule(id, invSchedule);
     }
-  }, [totalPaid, totalPensionWithRop, totalPensionWithoutRop, withRop, result?.goalId || goal?.id, setCardInvestment, setCardPayout]);
+  }, [totalPaid, totalPensionWithRop, totalPensionWithoutRop, withRop, annuityAmountWithRop, annuityAmountWithoutRop, payoutStartAge, profile?.age, whatIfParams?.goalStartAges, ppt, investmentAmount, result?.goalId, goal?.id, setCardInvestment, setCardPayout, setCardPayoutSchedule, setCardInvestmentSchedule]);
 
   return (
     <motion.div 

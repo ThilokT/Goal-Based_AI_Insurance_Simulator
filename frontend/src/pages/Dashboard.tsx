@@ -62,28 +62,10 @@ export default function Dashboard() {
               <p className="text-white/70 text-sm">Start by chatting with your AI advisor</p>
             )}
           </div>
-          <div className="text-right">
-            <p className="text-white/50 text-xs mb-1">Overall coverage</p>
-            <p className="text-4xl font-display font-bold text-white">{overallPct}%</p>
-            {totalGap > 0 && <p className="text-[11px] text-brand-orange-light mt-0.5">Gap: {formatCurrency(totalGap)}</p>}
-          </div>
+
         </div>
 
-        {totalCorpus > 0 && (
-          <div className="mt-4">
-            <div className="w-full bg-white/10 rounded-full h-2">
-              <motion.div
-                className={`h-2 rounded-full ${overallPct >= 100 ? 'bg-green-500' : 'bg-brand-orange'}`}
-                animate={{ width: `${Math.min(overallPct, 100)}%` }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-              />
-            </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-white/40">Covered: {formatCurrency(totalCovered)}</span>
-              <span className="text-[10px] text-white/40">Total needed: {formatCurrency(totalCorpus)}</span>
-            </div>
-          </div>
-        )}
+
       </motion.div>
 
       {/* Quick actions */}

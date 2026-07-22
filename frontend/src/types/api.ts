@@ -192,6 +192,7 @@ export interface GoalInput {
   goal_type: string
   target_amount: number
   target_year: number
+  start_age?: number | null
   priority?: number
   monthly_contribution?: number | null
 }

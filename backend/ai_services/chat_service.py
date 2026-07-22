@@ -98,7 +98,7 @@ Return a valid JSON object with these fields (use null for unknown values):
     "age": <int or null>,
     "annual_income": <float or null, in INR>,
     "monthly_expenses": <float or null, in INR>,
-    "existing_coverage": <float or null, in INR>,
+    "existing_coverage": <float or null, in INR, represents total existing savings, investments, or insurance coverage>,
     "dependents": <int or null>,
     "risk_appetite": <"conservative" | "moderate" | "aggressive" | null>,
     "city": <string or null>,
